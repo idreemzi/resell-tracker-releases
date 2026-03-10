@@ -7,7 +7,11 @@ const path    = require('path')
 const app = express()
 app.use(express.json())
 
-const PRIVATE_KEY = fs.readFileSync(path.join(__dirname, 'private.pem'), 'utf8')
+// On Railway: set PRIVATE_KEY env var with the PEM contents.
+// Locally: falls back to private.pem file.
+const PRIVATE_KEY = process.env.PRIVATE_KEY
+  ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n')  // Railway escapes newlines
+  : fs.readFileSync(path.join(__dirname, 'private.pem'), 'utf8')
 
 // POST /auth/exchange
 // Body: { code: string, deviceId: string }

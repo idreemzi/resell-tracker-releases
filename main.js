@@ -29,7 +29,7 @@ async function createWindow() {
   mainWindow.setMenuBarVisibility(false)
   mainWindow.once('ready-to-show', () => mainWindow.show())
 
-  const authed = checkAuth()
+  const authed = await checkAuth()
   if (authed) {
     mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
   } else {

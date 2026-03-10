@@ -640,15 +640,32 @@ function clearAuth() {
   if (fs.existsSync(p)) fs.unlinkSync(p)
 }
 
-function checkAuth() {
+async function checkAuth() {
   const auth = readAuth()
   if (!auth?.jwt) return false
 
+  // Local checks first (signature + expiry + deviceId)
   const payload = verifyJWT(auth.jwt)
   if (!payload) { clearAuth(); return false }
-
-  // Reject if this JWT was issued for a different machine
   if (payload.deviceId !== getDeviceId()) { clearAuth(); return false }
+
+  // Live server check — instantly detects role removal
+  try {
+    const res = await fetch(`${DISCORD.serverUrl}/auth/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: auth.jwt }),
+      signal: AbortSignal.timeout(8000),
+    })
+    const data = await res.json()
+    if (!data.valid) {
+      if (data.reason !== 'reauth') clearAuth()  // keep jwt if just needs re-login
+      return false
+    }
+  } catch {
+    // If server is unreachable, fall back to local JWT check (fail open)
+    // Remove this catch block if you want strict online-only enforcement
+  }
 
   return true
 }
@@ -690,10 +707,10 @@ function startCallbackServer(state) {
   })
 }
 
-ipcMain.handle('auth:check', () => {
+ipcMain.handle('auth:check', async () => {
   const auth = readAuth()
   if (!auth) return { authenticated: false }
-  const ok = checkAuth()
+  const ok = await checkAuth()
   return {
     authenticated: ok,
     user: ok ? { username: auth.username, avatar: auth.avatar } : null,

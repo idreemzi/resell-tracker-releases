@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resell Tracker</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── Top Nav ─────────────────────────────────────────────────────── -->
+  <nav class="topnav">
+    <div class="nav-logo">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+    </div>
+    <div class="nav-tabs">
+      <button class="tab-btn tab-sales active" data-view="sales">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Sales
+      </button>
+      <button class="tab-btn tab-inventory" data-view="inventory">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Inventory
+      </button>
+      <button class="tab-btn tab-packages" data-view="packages">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        Packages
+      </button>
+    </div>
+    <div class="nav-right">
+      <button class="btn-settings" id="btn-open-settings" title="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <div class="nav-user">RT</div>
+    </div>
+  </nav>
+
+  <!-- ── Content ─────────────────────────────────────────────────────── -->
+  <main class="content">
+
+    <!-- ── Sales View ──────────────────────────────────────────────── -->
+    <div id="view-sales" class="view active">
+      <div class="page-header">
+        <h1 class="page-title">Sales <span class="page-count" id="sales-count">0 Total</span></h1>
+        <div class="header-right">
+          <div class="search-wrap">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="sales-search" class="search-input" placeholder="Search…" />
+          </div>
+          <button class="btn-add" id="btn-add-sale">Add</button>
+        </div>
+      </div>
+
+      <div class="sales-layout">
+        <!-- Chart -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3 id="chart-title">Sales History for 2025</h3>
+            <div class="chart-year-nav">
+              <button class="year-btn" id="chart-prev">‹</button>
+              <button class="year-btn" id="chart-next">›</button>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <svg id="sales-chart" width="100%" height="180"></svg>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot spent"></span>Spent</span>
+              <span class="legend-item"><span class="legend-dot revenue"></span>Revenue</span>
+              <span class="legend-item"><span class="legend-dot profit"></span>Profit</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stat Cards -->
+        <div class="stat-cards-col">
+          <div class="stat-card">
+            <div class="stat-icon spent-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+            </div>
+            <div class="stat-label">Spent</div>
+            <div class="stat-value" id="stat-spent">$0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon revenue-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            </div>
+            <div class="stat-label">Revenue</div>
+            <div class="stat-value" id="stat-revenue">$0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon profit-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            </div>
+            <div class="stat-label">Profit</div>
+            <div class="stat-value profit-val" id="stat-profit">$0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sales Table -->
+      <div class="table-card">
+        <div class="table-scroll">
+          <table class="data-table" id="sales-table">
+            <thead>
+              <tr>
+                <th>Platform</th>
+                <th>Product</th>
+                <th>Purchase Price</th>
+                <th>Sale Price</th>
+                <th>Fees</th>
+                <th>Profit</th>
+                <th>Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="sales-tbody"></tbody>
+          </table>
+        </div>
+        <div id="sales-empty" class="empty-state" style="display:none">
+          <p>No sales yet. Add your first sale!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Inventory View ───────────────────────────────────────────── -->
+    <div id="view-inventory" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Inventory <span class="page-count" id="inv-count">0 Total</span></h1>
+        <div class="header-right">
+          <div class="search-wrap">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="inv-search" class="search-input" placeholder="Search…" />
+          </div>
+          <button class="btn-add" id="btn-add-inv">Add</button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <table class="data-table" id="inv-table">
+          <thead>
+            <tr>
+              <th style="width:52px"></th>
+              <th>Product Name</th>
+              <th>Qty</th>
+              <th>Store</th>
+              <th>Price</th>
+              <th>Est. Resell</th>
+              <th>Est. Profit</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="inv-tbody"></tbody>
+        </table>
+        <div id="inv-empty" class="empty-state" style="display:none">
+          <p>No inventory items yet. Add your first product!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Packages View ────────────────────────────────────────────── -->
+    <div id="view-packages" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Packages <span class="page-count" id="pkg-count">0 Total</span></h1>
+        <div class="header-right">
+          <div class="search-wrap">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="pkg-search" class="search-input" placeholder="Search…" />
+          </div>
+          <button class="btn-add" id="btn-add-pkg">Add</button>
+        </div>
+      </div>
+
+      <div id="pkg-cards-container"></div>
+      <div id="pkg-empty" class="empty-state" style="display:none">
+        <p>No packages yet. Add a shipment to track!</p>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── Add/Edit Sale Modal ──────────────────────────────────────────── -->
+<div id="modal-sale" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-sale-title">Add Sale</h2>
+      <button class="modal-close" id="modal-sale-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <input type="text"   id="s-product"  class="form-input grow" placeholder="Product Name*" />
+        <input type="text"   id="s-size"     class="form-input w120" placeholder="Size" />
+        <input type="text"   id="s-platform" class="form-input w160" placeholder="Platform" />
+      </div>
+      <div class="form-row">
+        <input type="number" id="s-buy"      class="form-input grow" placeholder="Purchase Price*" min="0" step="0.01" />
+        <input type="number" id="s-sell"     class="form-input grow" placeholder="Sale Price*"     min="0" step="0.01" />
+        <input type="number" id="s-fees"     class="form-input grow" placeholder="Fees"            min="0" step="0.01" />
+        <input type="date"   id="s-date"     class="form-input w160" />
+      </div>
+      <div class="modal-profit-row">
+        Profit: <span id="s-profit-preview" class="modal-profit">—</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-add modal-submit" id="btn-sale-save">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add/Edit Inventory Modal ─────────────────────────────────────── -->
+<div id="modal-inv" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-inv-title">Add Product</h2>
+      <button class="modal-close" id="modal-inv-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="photo-upload-row">
+        <div class="photo-preview-box" id="inv-photo-box">
+          <span class="photo-ph">📷</span>
+        </div>
+        <div class="photo-upload-btns">
+          <button type="button" class="btn-pick-photo" id="btn-inv-pick-photo">Choose File</button>
+          <button type="button" class="btn-remove-photo" id="btn-inv-remove-photo" style="display:none">Remove</button>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:5px">
+          <label style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em">Or paste image URL</label>
+          <input type="url" id="inv-photo-url" class="form-input" placeholder="https://example.com/image.jpg" style="width:100%" />
+        </div>
+      </div>
+      <div class="form-row">
+        <input type="text"   id="i-product"  class="form-input grow" placeholder="Product Name*" />
+        <input type="text"   id="i-size"     class="form-input w120" placeholder="Size" />
+        <input type="number" id="i-qty"      class="form-input w120" placeholder="Qty" min="1" step="1" value="1" />
+      </div>
+      <div class="form-row">
+        <input type="text"   id="i-store"    class="form-input grow" placeholder="Store" />
+        <input type="number" id="i-buy"      class="form-input grow" placeholder="Purchase Price*" min="0" step="0.01" />
+        <input type="number" id="i-resell"   class="form-input grow" placeholder="Estimated Resell" min="0" step="0.01" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-add modal-submit" id="btn-inv-save">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add/Edit Package Modal ───────────────────────────────────────── -->
+<div id="modal-pkg" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-pkg-title">Add Package</h2>
+      <button class="modal-close" id="modal-pkg-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <input type="text" id="p-tracking" class="form-input grow" placeholder="Tracking Number *" autocomplete="off" />
+      </div>
+      <div class="form-row" style="align-items:flex-start">
+        <input type="text" id="p-nickname" class="form-input grow" placeholder="Nickname" />
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <select id="p-carrier" class="form-input w180">
+            <option value="">Carrier *</option>
+            <option>USPS</option>
+            <option>UPS</option>
+            <option>FedEx</option>
+            <option>DHL</option>
+            <option>LaserShip</option>
+            <option>OnTrac</option>
+            <option>Amazon</option>
+            <option>Other</option>
+          </select>
+          <span id="carrier-hint" style="font-size:11px;color:var(--green-text);font-weight:600;display:none">✓ Auto-detected</span>
+        </div>
+      </div>
+      <div class="form-row">
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1">
+          <label style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em">Expected Delivery</label>
+          <input type="date" id="p-delivery" class="form-input" style="width:100%" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-add modal-submit" id="btn-pkg-save">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Mark as Sold Modal ───────────────────────────────────────────── -->
+<div id="modal-sold" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Mark as Sold</h2>
+      <button class="modal-close" id="modal-sold-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <input type="text"   id="ms-product"  class="form-input grow" placeholder="Product Name" readonly style="opacity:0.6" />
+        <input type="text"   id="ms-size"     class="form-input w120" placeholder="Size" readonly style="opacity:0.6" />
+      </div>
+      <div class="form-row">
+        <input type="number" id="ms-buy"      class="form-input grow" placeholder="Purchase Price" readonly style="opacity:0.6" />
+        <input type="number" id="ms-sell"     class="form-input grow" placeholder="Sale Price*" min="0" step="0.01" />
+        <input type="number" id="ms-fees"     class="form-input grow" placeholder="Fees" min="0" step="0.01" />
+      </div>
+      <div class="form-row">
+        <div style="display:flex;align-items:center;gap:8px;flex:1">
+          <label style="font-size:12px;font-weight:600;color:var(--text-muted);white-space:nowrap">QTY SELLING</label>
+          <input type="number" id="ms-qty" class="form-input grow" placeholder="1" min="1" step="1" value="1" />
+          <span id="ms-qty-max" style="font-size:12px;color:var(--text-dim);white-space:nowrap"></span>
+        </div>
+      </div>
+      <div class="form-row">
+        <input type="text"   id="ms-platform" class="form-input grow" placeholder="Platform" />
+        <input type="date"   id="ms-date"     class="form-input w160" />
+      </div>
+      <div class="modal-profit-row">
+        Profit: <span id="ms-profit-preview" class="modal-profit">—</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="btn-sold-cancel">Cancel</button>
+      <button class="btn-add modal-submit" id="btn-sold-confirm" style="background:var(--green);border-color:var(--green)">Mark as Sold</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Delete Confirm ───────────────────────────────────────────────── -->
+<div id="modal-delete" class="modal-overlay" style="display:none">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Confirm Delete</h2>
+      <button class="modal-close" id="modal-del-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p>Delete <strong id="del-item-name"></strong>? This cannot be undone.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="btn-del-cancel">Cancel</button>
+      <button class="btn-danger" id="btn-del-confirm">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings Modal ───────────────────────────────────────────────── -->
+<div id="modal-settings" class="modal-overlay" style="display:none">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button class="modal-close" id="modal-settings-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">17track API Key</label>
+        <input type="text" id="settings-api-key" class="form-input" style="width:100%" placeholder="Paste your 17track API key here" autocomplete="off" />
+        <p style="margin-top:8px;font-size:12px;color:var(--text-dim);line-height:1.5">
+          Required for reliable package tracking. Get a free key (100/day) at
+          <a id="link-17track" href="#" style="color:var(--blue);text-decoration:none">17track.net/en/apipage</a>
+        </p>
+        <div id="settings-api-status" style="margin-top:8px;font-size:12px;font-weight:600;display:none"></div>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between">
+      <button class="btn-danger" id="btn-logout" style="font-size:13px;padding:8px 16px">Sign Out</button>
+      <div style="display:flex;gap:10px">
+        <button class="btn-ghost" id="btn-settings-cancel">Cancel</button>
+        <button class="btn-add modal-submit" id="btn-settings-save">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Lightbox ─────────────────────────────────────────────────────── -->
+<div id="lightbox" class="lightbox-overlay" style="display:none">
+  <img id="lightbox-img" src="" alt="" />
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

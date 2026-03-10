@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd C:/Users/Alex/resell-tracker && npm install 2>&1)",
+      "Bash(ccusage)",
+      "Bash(npx ccusage:*)"
+    ]
+  }
+}

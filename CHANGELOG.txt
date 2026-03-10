@@ -1,0 +1,74 @@
+RESELL TRACKER — CHANGELOG
+==========================
+
+v1.4.0 — 2026-03-10
+--------------------
+ADDED
+  - Discord OAuth2 authentication gate — app shows a login screen on launch.
+  - Users must sign in with Discord and have the Subscriber role in your server
+    to access the app.
+  - Token saved locally and reused on future launches (auto-refreshed when
+    near expiry — Discord tokens last 7 days).
+  - "Sign Out" button in Settings modal.
+  - discord-config.js — single file to configure Client ID, Client Secret,
+    Guild ID, and Role ID.
+
+v1.3.0 — 2026-03-10
+--------------------
+CHANGED
+  - Platform column in sales list now displays the platform's full logo image
+    (favicon fetched via Google favicon service at 32px).
+  - Fallback colored chip badge shown if logo fails to load or no internet.
+
+v1.2.0 — 2026-03-10
+--------------------
+ADDED
+  - Platform badges in sales list — colored chips with 2-letter abbreviations
+    and brand colors for 19 platforms: eBay, StockX, GOAT, Depop, Poshmark,
+    Mercari, Facebook Marketplace, Amazon, Grailed, Flight Club, Stadium Goods,
+    OfferUp, Craigslist, Hermes, Vestiaire, Tradesy, Vinted, and more.
+  - Unknown platforms auto-generate a grey chip from the first 2 letters of
+    the platform name.
+
+v1.1.0
+------
+ADDED
+  - Settings modal with 17track API key configuration.
+  - Package auto-refresh on app load for all non-delivered packages.
+  - Carrier auto-detection from tracking number format (UPS, USPS, FedEx,
+    DHL, LaserShip, OnTrac, Amazon).
+  - "Auto-detected" hint shown when carrier is guessed from tracking number.
+  - Package event history toggle (expand/collapse older events per package).
+  - Mark as Sold modal — sell inventory items directly into the sales log,
+    with partial quantity support.
+  - Inventory photo support — pick a local file or paste an image URL.
+  - Photo lightbox — click any inventory thumbnail to view full size.
+  - Profit preview in Add/Edit Sale and Mark as Sold modals (live calculation).
+  - Chart year navigation (prev/next arrows) to browse historical sales data.
+  - Sales search, inventory search, and package search.
+  - Scrollable sales table (max height with sticky header).
+  - External link support — opens carrier tracking page in system browser.
+
+CHANGED
+  - Sales stats (Spent, Revenue, Profit) calculated across all sales, not
+    just the current year.
+  - Package status pipeline uses 5 stages: Ordered → Awaiting Pickup →
+    In Transit → Out for Delivery → Delivered.
+
+v1.0.0
+------
+ADDED
+  - Initial release.
+  - Three-tab layout: Sales, Inventory, Packages.
+  - Sales table with Platform, Product, Purchase Price, Sale Price, Fees,
+    Profit, Date columns.
+  - Monthly bar chart showing Spent / Revenue / Profit per month.
+  - Stat cards: total Spent, Revenue, Profit.
+  - Inventory table with photo thumbnail, product name, quantity, store,
+    purchase price, estimated resell, and estimated profit.
+  - Package tracking cards with pipeline status visualization.
+  - Add / Edit / Delete modals for Sales, Inventory, and Packages.
+  - Confirm delete modal.
+  - Keyboard shortcuts: Escape to close modals, Ctrl+Enter to save.
+  - Top nav with Sales / Inventory / Packages tabs and Settings button.
+  - Data persisted locally via Electron IPC (electron-store).

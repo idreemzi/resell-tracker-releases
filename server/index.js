@@ -3,25 +3,55 @@ const express = require('express')
 const jwt     = require('jsonwebtoken')
 const fs      = require('fs')
 const path    = require('path')
+const { Pool } = require('pg')
 
 const app = express()
 app.use(express.json())
 
-// On Railway: set PRIVATE_KEY env var with the PEM contents.
-// Locally: falls back to private.pem file.
+// ── Keys ──────────────────────────────────────────────────────────────────────
 const PRIVATE_KEY = process.env.PRIVATE_KEY
   ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n')
   : fs.readFileSync(path.join(__dirname, 'private.pem'), 'utf8')
 
-// In-memory store: userId → { refreshToken }
-// Lost on server restart (users just re-login, which re-checks role anyway)
+// Public key used to verify JWTs for admin requests
+const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqeWoTGLR5pvj3hKVMD4C
+ungs8Ux349aFPL06BbTciSfbBI8iCP7IeAIhqMPjCoEOhIFWmIKr0xhCG6moKs/0
+cSdvYlD27QGiuDX6NZBaaeMpl3nX2FgrUk2EttoEVmj2u+4L6HQgqMlPhGnmRK+s
+mr+3YxzhA5d3ilX1O29IKWvd4MzQUQDD+D4uhF0bjIEsEUT63kn4b6xMYO/TRYyt
+PtS9P/qWkLbwKUflavof7vpcIW0N913/nsM32OfNhUy3//ET1qiZwK1gIkhc2605
+sNXc/RLbOGf4Pu57lTTQjbJ5zG9rDueD//EzoBVBDECWk2AVMm50x562zFhg9anA
+uQIDAQAB
+-----END PUBLIC KEY-----`
+
+// ── Database ──────────────────────────────────────────────────────────────────
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+})
+
+async function initDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS releases (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      date        TEXT NOT NULL,
+      image_url   TEXT,
+      retail_price TEXT,
+      notes       TEXT,
+      created_at  TIMESTAMPTZ DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ DEFAULT NOW()
+    )
+  `)
+  console.log('Database ready')
+}
+
+// ── Auth helpers ──────────────────────────────────────────────────────────────
 const tokenStore = new Map()
 
 async function getValidAccessToken(userId) {
   const stored = tokenStore.get(userId)
   if (!stored) return null
-
-  // Use refresh token to get a fresh Discord access token
   try {
     const res = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
@@ -36,7 +66,6 @@ async function getValidAccessToken(userId) {
     })
     if (!res.ok) { tokenStore.delete(userId); return null }
     const data = await res.json()
-    // Update stored refresh token (Discord rotates them)
     tokenStore.set(userId, { refreshToken: data.refresh_token || stored.refreshToken })
     return data.access_token
   } catch {
@@ -58,14 +87,28 @@ async function checkDiscordRole(accessToken) {
   }
 }
 
-// POST /auth/exchange
-// Body: { code, deviceId }
-// Returns: { token, username, avatar }
+// ── Admin middleware ───────────────────────────────────────────────────────────
+function requireAdmin(req, res, next) {
+  const auth = req.headers.authorization
+  if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' })
+  const token = auth.slice(7)
+  try {
+    const payload = jwt.verify(token, PUBLIC_KEY, { algorithms: ['RS256'] })
+    if (payload.userId !== process.env.ADMIN_DISCORD_ID) {
+      return res.status(403).json({ error: 'Forbidden' })
+    }
+    req.adminUserId = payload.userId
+    next()
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' })
+  }
+}
+
+// ── Auth routes ───────────────────────────────────────────────────────────────
 app.post('/auth/exchange', async (req, res) => {
   const { code, deviceId } = req.body
   if (!code || !deviceId) return res.status(400).json({ error: 'Missing params' })
 
-  // 1. Exchange OAuth code for Discord tokens
   let tokenData
   try {
     const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
@@ -89,11 +132,9 @@ app.post('/auth/exchange', async (req, res) => {
     return res.status(500).json({ error: 'Token exchange error' })
   }
 
-  // 2. Verify subscriber role
   const hasRole = await checkDiscordRole(tokenData.access_token)
   if (!hasRole) return res.status(403).json({ error: 'no_subscription' })
 
-  // 3. Get user info
   let user
   try {
     const userRes = await fetch('https://discord.com/api/users/@me', {
@@ -105,10 +146,8 @@ app.post('/auth/exchange', async (req, res) => {
     return res.status(500).json({ error: 'Failed to get user info' })
   }
 
-  // 4. Store refresh token for future role checks
   tokenStore.set(user.id, { refreshToken: tokenData.refresh_token })
 
-  // 5. Issue JWT
   const token = jwt.sign(
     { userId: user.id, username: user.username, deviceId },
     PRIVATE_KEY,
@@ -122,33 +161,93 @@ app.post('/auth/exchange', async (req, res) => {
   res.json({ token, username: user.username, avatar })
 })
 
-// POST /auth/verify
-// Body: { token }
-// Returns: { valid: true } or { valid: false, reason }
-// Called on every app launch to instantly detect role removal.
 app.post('/auth/verify', async (req, res) => {
   const { token } = req.body
   if (!token) return res.status(400).json({ valid: false, reason: 'missing_token' })
 
-  // 1. Decode token to get userId (Discord role check is the real security gate)
   const payload = jwt.decode(token)
   if (!payload?.userId) return res.json({ valid: false, reason: 'invalid_token' })
 
   const { userId } = payload
 
-  // 2. If we have a stored refresh token, use it to check role right now
   const accessToken = await getValidAccessToken(userId)
   if (!accessToken) {
-    // No stored token (server restarted) — tell client to re-login
     return res.json({ valid: false, reason: 'reauth' })
   }
 
-  // 3. Live Discord role check
   const hasRole = await checkDiscordRole(accessToken)
   if (!hasRole) return res.json({ valid: false, reason: 'no_subscription' })
 
   res.json({ valid: true })
 })
 
+// ── Releases routes ───────────────────────────────────────────────────────────
+
+// GET /releases — public, all users fetch on app launch
+app.get('/releases', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM releases ORDER BY date ASC')
+    res.json(result.rows.map(r => ({
+      id:          r.id,
+      name:        r.name,
+      date:        r.date,
+      imageUrl:    r.image_url,
+      retailPrice: r.retail_price,
+      notes:       r.notes,
+      createdAt:   r.created_at,
+      updatedAt:   r.updated_at,
+    })))
+  } catch (err) {
+    console.error('GET /releases error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+// POST /releases — admin only
+app.post('/releases', requireAdmin, async (req, res) => {
+  const { id, name, date, imageUrl, retailPrice, notes } = req.body
+  if (!name || !date) return res.status(400).json({ error: 'name and date required' })
+  const releaseId = id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  try {
+    await pool.query(
+      'INSERT INTO releases (id, name, date, image_url, retail_price, notes) VALUES ($1,$2,$3,$4,$5,$6)',
+      [releaseId, name, date, imageUrl || null, retailPrice || null, notes || null]
+    )
+    res.json({ id: releaseId, name, date, imageUrl: imageUrl || null, retailPrice: retailPrice || null, notes: notes || null })
+  } catch (err) {
+    console.error('POST /releases error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+// PUT /releases/:id — admin only
+app.put('/releases/:id', requireAdmin, async (req, res) => {
+  const { name, date, imageUrl, retailPrice, notes } = req.body
+  try {
+    await pool.query(
+      'UPDATE releases SET name=$1, date=$2, image_url=$3, retail_price=$4, notes=$5, updated_at=NOW() WHERE id=$6',
+      [name, date, imageUrl || null, retailPrice || null, notes || null, req.params.id]
+    )
+    res.json({ success: true })
+  } catch (err) {
+    console.error('PUT /releases error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+// DELETE /releases/:id — admin only
+app.delete('/releases/:id', requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM releases WHERE id=$1', [req.params.id])
+    res.json({ success: true })
+  } catch (err) {
+    console.error('DELETE /releases error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+// ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000
-app.listen(PORT, () => console.log(`Auth server listening on port ${PORT}`))
+initDB()
+  .then(() => app.listen(PORT, () => console.log(`Auth server listening on port ${PORT}`)))
+  .catch(err => { console.error('Failed to init DB:', err); process.exit(1) })

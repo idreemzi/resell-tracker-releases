@@ -1061,28 +1061,35 @@ const AMZN_EXTRACT = `(function(){
   } catch(e) { return null }
 })()`
 
+const localMonitorScraping = new Map()  // monitorId → Promise (prevents concurrent scrapes)
+
 async function scrapeLocalProduct(monitor, url) {
+  // If already scraping this monitor, skip
+  if (localMonitorScraping.has(monitor.id)) return null
+
   const win = getOrCreateMonitorWindow(monitor)
   const siteType = monitor.site_type
-  return new Promise((resolve) => {
+
+  const p = new Promise((resolve) => {
     let done = false
     const finish = (val) => { if (!done) { done = true; clearTimeout(timer); resolve(val) } }
-    const timer = setTimeout(() => finish(null), 30000)
+    const timer = setTimeout(() => { console.log(`[local-monitor] timeout for ${monitor.name}`); finish(null) }, 30000)
 
-    const onFail = (e, code) => { if (code !== -3) finish(null) }
+    const onFail = (e, code, desc) => {
+      console.log(`[local-monitor] load failed code=${code} desc=${desc} for ${monitor.name}`)
+      finish(null)
+    }
     const onLoad = async () => {
       if (done) return
       const extractFn = siteType === 'amazon' ? AMZN_EXTRACT : BB_EXTRACT
       for (let i = 0; i < 20 && !done; i++) {
         await new Promise(r => setTimeout(r, 1000))
         try {
+          const title = await win.webContents.executeJavaScript('document.title')
           const result = await win.webContents.executeJavaScript(extractFn)
-          if (i === 0 || i === 4) {
-            const title = await win.webContents.executeJavaScript('document.title')
-            console.log(`[local-monitor] debug t=${i} title="${title}" result=${JSON.stringify(result)}`)
-          }
+          console.log(`[local-monitor] t=${i} title="${title}" result=${JSON.stringify(result)}`)
           if (result && result.available !== undefined) { finish(result); return }
-        } catch (e) { if (i === 0) console.log(`[local-monitor] extract error: ${e.message}`) }
+        } catch (e) { console.log(`[local-monitor] extract error t=${i}: ${e.message}`); break }
       }
       finish(null)
     }
@@ -1091,6 +1098,9 @@ async function scrapeLocalProduct(monitor, url) {
     win.webContents.once('did-finish-load', onLoad)
     win.loadURL(url)
   })
+
+  localMonitorScraping.set(monitor.id, p)
+  try { return await p } finally { localMonitorScraping.delete(monitor.id) }
 }
 
 async function runLocalMonitor(monitor) {

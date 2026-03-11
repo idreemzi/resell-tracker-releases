@@ -41,6 +41,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Market Lookup
       </button>
+      <button class="tab-btn tab-monitors" data-view="monitors" id="tab-monitors" style="display:none">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        Monitors
+      </button>
     </div>
     <div class="nav-right">
       <button class="btn-settings" id="btn-open-settings" title="Settings">
@@ -277,6 +281,20 @@
       <div id="pkg-cards-container"></div>
       <div id="pkg-empty" class="empty-state" style="display:none">
         <p>No packages yet. Add a shipment to track!</p>
+      </div>
+    </div>
+
+    <!-- ── Monitors View ─────────────────────────────────────────────── -->
+    <div id="view-monitors" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Monitors <span class="page-count" id="monitors-count"></span></h1>
+        <div class="header-right">
+          <button class="btn-add" id="btn-add-monitor">+ Monitor</button>
+        </div>
+      </div>
+      <div id="monitors-grid" class="monitors-grid"></div>
+      <div id="monitors-empty" class="empty-state" style="display:none">
+        <p>No monitors yet. Add a Shopify site to start monitoring restocks and new products!</p>
       </div>
     </div>
 
@@ -569,6 +587,42 @@
     </div>
     <div class="modal-footer">
       <button class="btn-add modal-submit" id="btn-release-save">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add/Edit Monitor Modal ───────────────────────────────────────── -->
+<div id="modal-monitor" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-monitor-title">Add Monitor</h2>
+      <button class="modal-close" id="modal-monitor-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <input type="text" id="mon-name" class="form-input grow" placeholder="Monitor Name * (e.g. Supreme, Kith)" />
+      </div>
+      <div class="form-row">
+        <input type="url" id="mon-url" class="form-input grow" placeholder="Shopify Site URL * (e.g. https://www.supremenewyork.com)" />
+      </div>
+      <div class="form-row">
+        <input type="text" id="mon-keywords" class="form-input grow" placeholder="Keywords (comma-separated, optional — e.g. jordan, dunk)" />
+      </div>
+      <div class="form-row">
+        <input type="url" id="mon-webhook" class="form-input grow" placeholder="Discord Webhook URL *" />
+      </div>
+      <div class="form-row">
+        <input type="text" id="mon-role" class="form-input grow" placeholder="Role ID to ping (optional)" />
+        <select id="mon-interval" class="form-input w160">
+          <option value="30">Every 30s</option>
+          <option value="60" selected>Every 60s</option>
+          <option value="120">Every 2 min</option>
+          <option value="300">Every 5 min</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-add modal-submit" id="btn-monitor-save">Add Monitor</button>
     </div>
   </div>
 </div>

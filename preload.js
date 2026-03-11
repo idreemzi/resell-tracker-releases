@@ -15,6 +15,13 @@ contextBridge.exposeInMainWorld('api', {
   packages:       collection('packages'),
   releases:       collection('releases'),
   pinned:         collection('pinned'),
+  monitors: {
+    getAll:  ()            => ipcRenderer.invoke('monitors:getAll'),
+    add:     item          => ipcRenderer.invoke('monitors:add', item),
+    update:  (id, updates) => ipcRenderer.invoke('monitors:update', id, updates),
+    delete:  id            => ipcRenderer.invoke('monitors:delete', id),
+    test:    id            => ipcRenderer.invoke('monitors:test', id),
+  },
   pickPhoto:      ()                     => ipcRenderer.invoke('photo:pick'),
   readPhoto:      filePath               => ipcRenderer.invoke('photo:read', filePath),
   openTracking:   (trackingNum, carrier) => ipcRenderer.invoke('tracking:open', trackingNum, carrier),

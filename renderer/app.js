@@ -5,6 +5,8 @@ let packages  = []
 let releases       = []
 let pinnedMessages = []
 let isAdmin        = false
+let monitors = []
+let monitorEditId = null
 const ADMIN_DISCORD_ID = '313100007551270912'
 
 let chartYear = new Date().getFullYear()
@@ -160,6 +162,11 @@ async function loadData() {
   } catch (err) {
     console.error('Failed to load data:', err)
     sales = []; inventory = []; packages = []
+  }
+  if (isAdmin) {
+    try { monitors = await window.api.monitors.getAll() } catch { monitors = [] }
+    $('tab-monitors').style.display = ''
+    renderMonitors()
   }
   renderAll()
   autoRefreshPackages()
@@ -753,6 +760,7 @@ async function confirmDelete() {
   if (collection === 'sales')     { sales     = sales.filter(s => s.id !== id);     renderSales();     renderChart() }
   if (collection === 'inventory') { inventory = inventory.filter(i => i.id !== id); renderInventory() }
   if (collection === 'packages')  { packages  = packages.filter(p => p.id !== id);  renderPackages() }
+  if (collection === 'monitors')  { monitors  = monitors.filter(m => m.id !== id);  renderMonitors() }
   closeDeleteModal()
 }
 
@@ -1051,6 +1059,97 @@ function bindEvents() {
   $('modal-pinned-close').addEventListener('click', closePinnedModal)
   $('btn-pinned-save').addEventListener('click', savePinnedMessage)
   $('modal-pinned').addEventListener('click', e => { if (e.target.id === 'modal-pinned') closePinnedModal() })
+
+  // Monitors
+  $('btn-add-monitor').addEventListener('click', () => openMonitorModal())
+  $('modal-monitor-close').addEventListener('click', () => { $('modal-monitor').style.display = 'none' })
+  $('modal-monitor').addEventListener('click', e => { if (e.target === $('modal-monitor')) $('modal-monitor').style.display = 'none' })
+
+  $('btn-monitor-save').addEventListener('click', async () => {
+    const name        = $('mon-name').value.trim()
+    const siteUrl     = $('mon-url').value.trim()
+    const keywords    = $('mon-keywords').value.trim()
+    const webhookUrl  = $('mon-webhook').value.trim()
+    const pingRole    = $('mon-role').value.trim()
+    const intervalSec = parseInt($('mon-interval').value) || 60
+
+    if (!name || !siteUrl || !webhookUrl) {
+      $('mon-name').focus()
+      return
+    }
+
+    const payload = { name, siteUrl, keywords: keywords || null, webhookUrl, pingRole: pingRole || null, intervalSec }
+
+    if (monitorEditId) {
+      const existing = monitors.find(m => m.id === monitorEditId)
+      const updated = await window.api.monitors.update(monitorEditId, { ...payload, active: existing?.active !== false })
+      if (!updated?.error) {
+        const idx = monitors.findIndex(m => m.id === monitorEditId)
+        if (idx !== -1) monitors[idx] = updated
+      }
+    } else {
+      const created = await window.api.monitors.add(payload)
+      if (!created?.error) monitors.unshift(created)
+    }
+
+    $('modal-monitor').style.display = 'none'
+    renderMonitors()
+  })
+
+  $('monitors-grid').addEventListener('click', async e => {
+    const toggleBtn = e.target.closest('.btn-monitor-toggle')
+    const testBtn   = e.target.closest('.btn-monitor-test')
+    const editBtn   = e.target.closest('.btn-monitor-edit')
+    const deleteBtn = e.target.closest('.btn-monitor-delete')
+
+    if (toggleBtn) {
+      const id = toggleBtn.dataset.id
+      const isActive = toggleBtn.dataset.active === 'true'
+      const monitor = monitors.find(m => m.id === id)
+      if (!monitor) return
+      const updated = await window.api.monitors.update(id, {
+        name: monitor.name, siteUrl: monitor.site_url, keywords: monitor.keywords,
+        webhookUrl: monitor.webhook_url, pingRole: monitor.ping_role,
+        intervalSec: monitor.interval_sec, active: !isActive
+      })
+      if (!updated?.error) {
+        const idx = monitors.findIndex(m => m.id === id)
+        if (idx !== -1) monitors[idx] = updated
+        renderMonitors()
+      }
+      return
+    }
+
+    if (testBtn) {
+      const id  = testBtn.dataset.id
+      const btn = testBtn
+      btn.disabled = true
+      btn.style.opacity = '0.5'
+      try {
+        await window.api.monitors.test(id)
+      } finally {
+        btn.disabled = false
+        btn.style.opacity = ''
+      }
+      return
+    }
+
+    if (editBtn) {
+      const id = editBtn.dataset.id
+      const monitor = monitors.find(m => m.id === id)
+      if (monitor) openMonitorModal(monitor)
+      return
+    }
+
+    if (deleteBtn) {
+      const id = deleteBtn.dataset.id
+      const monitor = monitors.find(m => m.id === id)
+      if (!monitor) return
+      deleteTarget = { collection: 'monitors', id }
+      $('del-item-name').textContent = monitor.name
+      $('modal-delete').style.display = 'flex'
+    }
+  })
 
   // Delegated: release edit / delete + pinned delete
   document.addEventListener('click', e => {
@@ -1371,6 +1470,82 @@ async function deletePinnedMessage(id) {
   await window.api.pinned.delete(id)
   pinnedMessages = pinnedMessages.filter(m => m.id !== id)
   renderPinnedMessages()
+}
+
+// ── Monitors ──────────────────────────────────────────────────────────────────
+function renderMonitors() {
+  const grid  = $('monitors-grid')
+  const empty = $('monitors-empty')
+  $('monitors-count').textContent = monitors.length ? `${monitors.length} Total` : ''
+
+  if (!monitors.length) {
+    grid.innerHTML = ''
+    empty.style.display = ''
+    return
+  }
+  empty.style.display = 'none'
+
+  grid.innerHTML = monitors.map(m => {
+    const active    = m.active
+    const lastPing  = m.last_pinged ? timeAgo(m.last_pinged) : 'Never'
+    const keywords  = m.keywords || '—'
+    const interval  = m.interval_sec >= 60
+      ? `${Math.round(m.interval_sec / 60)}m`
+      : `${m.interval_sec}s`
+    const siteHost  = (() => { try { return new URL(m.site_url.startsWith('http') ? m.site_url : 'https://' + m.site_url).hostname } catch { return m.site_url } })()
+
+    return `
+    <div class="monitor-card ${active ? 'monitor-active' : 'monitor-paused'}" data-id="${esc(m.id)}">
+      <div class="monitor-card-top">
+        <div class="monitor-status-dot ${active ? 'dot-active' : 'dot-paused'}"></div>
+        <span class="monitor-name">${esc(m.name)}</span>
+        <span class="monitor-badge ${active ? 'badge-active' : 'badge-paused'}">${active ? 'Active' : 'Paused'}</span>
+        <div class="monitor-actions">
+          <button class="btn-row btn-monitor-toggle" title="${active ? 'Pause' : 'Resume'}" data-id="${esc(m.id)}" data-active="${active}">
+            ${active
+              ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="pointer-events:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
+              : `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="pointer-events:none"><polygon points="5 3 19 12 5 21 5 3"/></svg>`}
+          </button>
+          <button class="btn-row btn-monitor-test" title="Send test ping" data-id="${esc(m.id)}" style="pointer-events:auto;color:var(--teal)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="pointer-events:none"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+          <button class="btn-row btn-edit btn-monitor-edit" title="Edit" data-id="${esc(m.id)}" style="pointer-events:auto">${EDIT_ICON}</button>
+          <button class="btn-row danger btn-monitor-delete" title="Delete" data-id="${esc(m.id)}" style="pointer-events:auto">${DEL_ICON}</button>
+        </div>
+      </div>
+      <div class="monitor-card-body">
+        <div class="monitor-field"><span class="monitor-label">Site</span><span class="monitor-val">${esc(siteHost)}</span></div>
+        <div class="monitor-field"><span class="monitor-label">Keywords</span><span class="monitor-val">${esc(keywords)}</span></div>
+        <div class="monitor-field"><span class="monitor-label">Interval</span><span class="monitor-val">Every ${interval}</span></div>
+        <div class="monitor-field"><span class="monitor-label">Last ping</span><span class="monitor-val">${esc(lastPing)}</span></div>
+        ${m.ping_role ? `<div class="monitor-field"><span class="monitor-label">Role</span><span class="monitor-val">${esc(m.ping_role)}</span></div>` : ''}
+      </div>
+    </div>`
+  }).join('')
+}
+
+function timeAgo(isoString) {
+  const diff = Date.now() - new Date(isoString).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'Just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
+function openMonitorModal(monitor = null) {
+  monitorEditId = monitor ? monitor.id : null
+  $('modal-monitor-title').textContent = monitor ? 'Edit Monitor' : 'Add Monitor'
+  $('btn-monitor-save').textContent    = monitor ? 'Save' : 'Add Monitor'
+  $('mon-name').value     = monitor?.name || ''
+  $('mon-url').value      = monitor?.site_url || ''
+  $('mon-keywords').value = monitor?.keywords || ''
+  $('mon-webhook').value  = monitor?.webhook_url || ''
+  $('mon-role').value     = monitor?.ping_role || ''
+  $('mon-interval').value = String(monitor?.interval_sec || 60)
+  $('modal-monitor').style.display = 'flex'
+  $('mon-name').focus()
 }
 
 // ── Market Lookup ─────────────────────────────────────────────────────────────

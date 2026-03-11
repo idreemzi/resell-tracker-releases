@@ -222,6 +222,65 @@ ipcMain.handle('pinned:delete', async (_, id) => {
   }
 })
 
+// ── Monitor handlers — proxied to Railway server ──────────────────────────────
+ipcMain.handle('monitors:getAll', async () => {
+  try {
+    const token = getStoredJWT()
+    const res = await fetch(`${SERVER_URL}/monitors`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal: AbortSignal.timeout(8000)
+    })
+    if (!res.ok) return []
+    return await res.json()
+  } catch { return [] }
+})
+
+ipcMain.handle('monitors:add', async (_, item) => {
+  try {
+    const token = getStoredJWT()
+    const res = await fetch(`${SERVER_URL}/monitors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(item)
+    })
+    return res.json()
+  } catch (err) { return { error: err.message } }
+})
+
+ipcMain.handle('monitors:update', async (_, id, updates) => {
+  try {
+    const token = getStoredJWT()
+    const res = await fetch(`${SERVER_URL}/monitors/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(updates)
+    })
+    return res.json()
+  } catch (err) { return { error: err.message } }
+})
+
+ipcMain.handle('monitors:delete', async (_, id) => {
+  try {
+    const token = getStoredJWT()
+    const res = await fetch(`${SERVER_URL}/monitors/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    return res.json()
+  } catch (err) { return { error: err.message } }
+})
+
+ipcMain.handle('monitors:test', async (_, id) => {
+  try {
+    const token = getStoredJWT()
+    const res = await fetch(`${SERVER_URL}/monitors/${id}/test`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    return res.json()
+  } catch (err) { return { error: err.message } }
+})
+
 // ── Photo handlers ────────────────────────────────────────────────────────────
 ipcMain.handle('photo:pick', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {

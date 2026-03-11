@@ -545,6 +545,28 @@ app.delete('/monitors/:id', requireAdmin, async (req, res) => {
   }
 })
 
+// POST /monitors/:id/test — sends a fake ping to verify webhook works
+app.post('/monitors/:id/test', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM monitors WHERE id = $1', [req.params.id])
+    if (!result.rows.length) return res.status(404).json({ error: 'Monitor not found' })
+    const monitor = result.rows[0]
+
+    const fakeProduct = {
+      title: 'Test Product — Monitor is Working!',
+      handle: 'test-product',
+      images: [{ src: 'https://cdn.shopify.com/s/files/1/0533/2089/files/placeholder-images-product-1_large.png' }],
+      variants: [{ id: '1', price: '199.99', available: true, title: 'Size 10' }]
+    }
+    const baseUrl = monitor.site_url.trim().replace(/\/$/, '')
+    await sendDiscordPing(monitor, fakeProduct, baseUrl, 'restock', ['Size 10', 'Size 11'])
+    res.json({ success: true })
+  } catch (err) {
+    console.error('POST /monitors/test error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => console.log(`Auth server listening on port ${PORT}`))

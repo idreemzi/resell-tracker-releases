@@ -1139,10 +1139,19 @@ function bindEvents() {
       if (!updated?.error) {
         const idx = monitors.findIndex(m => m.id === monitorEditId)
         if (idx !== -1) monitors[idx] = updated
+        const isLocal = updated.site_type === 'bestbuy' || updated.site_type === 'amazon'
+        if (isLocal) {
+          window.api.localMonitors.stop(updated.id).catch(() => {})
+          if (updated.active) window.api.localMonitors.start([updated]).catch(() => {})
+        }
       }
     } else {
       const created = await window.api.monitors.add(payload)
-      if (!created?.error) monitors.unshift(created)
+      if (!created?.error) {
+        monitors.unshift(created)
+        const isLocal = created.site_type === 'bestbuy' || created.site_type === 'amazon'
+        if (isLocal && created.active) window.api.localMonitors.start([created]).catch(() => {})
+      }
     }
 
     $('modal-monitor').style.display = 'none'

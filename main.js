@@ -991,17 +991,37 @@ function stopLocalMonitor(monitorId) {
   localMonitorSeen.delete(monitorId)
 }
 
-const BB_EXTRACT = `(function(){
+const BB_EXTRACT = `(async function(){
   try {
-    const btn  = document.querySelector('[data-button-state]')?.getAttribute('data-button-state')
-          || document.querySelector('.add-to-cart-button')?.getAttribute('data-button-state')
-          || (document.querySelector('.btn-primary') && document.querySelector('.btn-primary').innerText.toLowerCase().includes('add to cart') ? 'ADD_TO_CART' : null)
+    // Try BB's internal priceBlocks API first — most reliable
+    const skuMatch = location.href.match(/skuId=(\d+)/) || location.href.match(/\/(\d+)\.p/)
+    if (skuMatch) {
+      const sku = skuMatch[1]
+      try {
+        const res  = await fetch('/api/3.0/priceBlocks?skus=' + sku, { headers: { Accept: 'application/json' } })
+        const data = await res.json()
+        const item = Array.isArray(data) ? data[0] : data
+        if (item) {
+          const state     = item.sku?.buttonState?.buttonState || item.sku?.addToCartButton?.buttonState || ''
+          const available = state === 'ADD_TO_CART' || state === 'PRE_ORDER'
+          const price     = item.sku?.customerPrice?.currentPrice ?? null
+          const title     = item.sku?.names?.title ?? null
+          return { available, price, title, _via: 'api' }
+        }
+      } catch {}
+    }
+    // DOM fallback — only check the actual product button, not body text
+    const btn   = document.querySelector('.add-to-cart-button[data-button-state]')
+                || document.querySelector('[data-button-state="ADD_TO_CART"]')
+                || document.querySelector('[data-button-state="SOLD_OUT"]')
+                || document.querySelector('[data-button-state]')
+    const state = btn?.getAttribute('data-button-state') || ''
+    const available = state === 'ADD_TO_CART' || state === 'PRE_ORDER'
     const priceEl = document.querySelector('.priceView-customer-price span') || document.querySelector('[class*="priceView"] span')
-    const price = priceEl ? parseFloat(priceEl.innerText.replace(/[^0-9.]/g,'')) : null
-    const titleEl = document.querySelector('.sku-title h1') || document.querySelector('h1')
-    const soldOut = document.body.innerText.includes('Sold Out') || document.body.innerText.includes('Coming Soon')
-    const available = !soldOut && (btn === 'ADD_TO_CART' || !!document.querySelector('[class*="fulfillment-add-to-cart-button"]:not([disabled])') || document.body.innerText.includes('Add to Cart'))
-    return { available, price, title: titleEl ? titleEl.innerText.trim() : null, btn }
+    const price   = priceEl ? parseFloat(priceEl.innerText.replace(/[^0-9.]/g,'')) : null
+    const titleEl = document.querySelector('.sku-title h1') || document.querySelector('h1[class*="heading"]') || document.querySelector('h1')
+    if (!state) return null  // page not loaded yet
+    return { available, price, title: titleEl ? titleEl.innerText.trim() : null, _via: 'dom' }
   } catch(e) { return null }
 })()`
 
@@ -1044,7 +1064,7 @@ async function scrapeLocalProduct(url, siteType) {
         await new Promise(r => setTimeout(r, 1000))
         try {
           const result = await win.webContents.executeJavaScript(extractFn)
-          if (result && (result.title || result.available !== undefined)) {
+          if (result && result.available !== undefined) {
             finish(result)
             return
           }

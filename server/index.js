@@ -55,6 +55,30 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS monitors (
+      id           TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      site_url     TEXT NOT NULL,
+      keywords     TEXT,
+      webhook_url  TEXT NOT NULL,
+      ping_role    TEXT,
+      active       BOOLEAN DEFAULT true,
+      interval_sec INTEGER DEFAULT 60,
+      last_pinged  TIMESTAMPTZ,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS monitor_seen (
+      monitor_id   TEXT NOT NULL,
+      product_id   TEXT NOT NULL,
+      variant_data JSONB DEFAULT '{}',
+      updated_at   TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (monitor_id, product_id)
+    )
+  `)
+  startMonitorEngine()
   console.log('Database ready')
 }
 
@@ -294,6 +318,229 @@ app.delete('/pinned/:id', requireAdmin, async (req, res) => {
     res.json({ success: true })
   } catch (err) {
     console.error('DELETE /pinned error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+// ── Monitor Engine ────────────────────────────────────────────────────────────
+const monitorTimers = new Map()
+
+async function startMonitorEngine() {
+  try {
+    const result = await pool.query('SELECT * FROM monitors WHERE active = true')
+    for (const monitor of result.rows) scheduleMonitor(monitor)
+    console.log(`Monitor engine started: ${result.rows.length} active monitors`)
+  } catch (err) {
+    console.error('Failed to start monitor engine:', err.message)
+  }
+}
+
+function scheduleMonitor(monitor) {
+  const existing = monitorTimers.get(monitor.id)
+  if (existing) clearInterval(existing)
+  const interval = (monitor.interval_sec || 60) * 1000
+  runMonitor(monitor.id).catch(() => {})
+  const timer = setInterval(() => runMonitor(monitor.id).catch(() => {}), interval)
+  monitorTimers.set(monitor.id, timer)
+}
+
+function stopMonitor(monitorId) {
+  const timer = monitorTimers.get(monitorId)
+  if (timer) { clearInterval(timer); monitorTimers.delete(monitorId) }
+}
+
+async function runMonitor(monitorId) {
+  let monitor
+  try {
+    const result = await pool.query('SELECT * FROM monitors WHERE id = $1 AND active = true', [monitorId])
+    if (!result.rows.length) return
+    monitor = result.rows[0]
+  } catch { return }
+
+  let baseUrl = monitor.site_url.trim().replace(/\/$/, '')
+  if (!baseUrl.startsWith('http')) baseUrl = 'https://' + baseUrl
+
+  let products
+  try {
+    const res = await fetch(`${baseUrl}/products.json?limit=250`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      signal: AbortSignal.timeout(15000)
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    products = data.products
+    if (!Array.isArray(products)) return
+  } catch { return }
+
+  const seenCount = await pool.query('SELECT COUNT(*) FROM monitor_seen WHERE monitor_id = $1', [monitorId])
+  const isFirstRun = parseInt(seenCount.rows[0].count) === 0
+
+  const keywords = monitor.keywords
+    ? monitor.keywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
+    : []
+
+  for (const product of products) {
+    const productId = String(product.id)
+
+    if (keywords.length > 0) {
+      const title = (product.title || '').toLowerCase()
+      if (!keywords.some(kw => title.includes(kw))) continue
+    }
+
+    const currentVariants = {}
+    for (const v of (product.variants || [])) currentVariants[String(v.id)] = v.available
+
+    try {
+      if (isFirstRun) {
+        await pool.query(
+          `INSERT INTO monitor_seen (monitor_id, product_id, variant_data, updated_at)
+           VALUES ($1, $2, $3, NOW()) ON CONFLICT (monitor_id, product_id) DO NOTHING`,
+          [monitorId, productId, JSON.stringify(currentVariants)]
+        )
+      } else {
+        const seen = await pool.query(
+          'SELECT variant_data FROM monitor_seen WHERE monitor_id = $1 AND product_id = $2',
+          [monitorId, productId]
+        )
+        if (seen.rows.length === 0) {
+          await pool.query(
+            `INSERT INTO monitor_seen (monitor_id, product_id, variant_data, updated_at) VALUES ($1, $2, $3, NOW())`,
+            [monitorId, productId, JSON.stringify(currentVariants)]
+          )
+          const anyAvailable = Object.values(currentVariants).some(v => v)
+          if (anyAvailable) {
+            const availableVariants = (product.variants || []).filter(v => v.available).map(v => v.title)
+            await sendDiscordPing(monitor, product, baseUrl, 'new', availableVariants)
+          }
+        } else {
+          const prevVariants = seen.rows[0].variant_data || {}
+          const restockedVariants = []
+          for (const [varId, available] of Object.entries(currentVariants)) {
+            if (available && prevVariants[varId] === false) {
+              const variant = (product.variants || []).find(v => String(v.id) === varId)
+              if (variant) restockedVariants.push(variant.title)
+            }
+          }
+          await pool.query(
+            `UPDATE monitor_seen SET variant_data = $1, updated_at = NOW() WHERE monitor_id = $2 AND product_id = $3`,
+            [JSON.stringify(currentVariants), monitorId, productId]
+          )
+          if (restockedVariants.length > 0) {
+            await sendDiscordPing(monitor, product, baseUrl, 'restock', restockedVariants)
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`[monitor] product ${productId} error:`, err.message)
+    }
+  }
+}
+
+async function sendDiscordPing(monitor, product, baseUrl, type, variants) {
+  const isRestock = type === 'restock'
+  const color = isRestock ? 0x00ff7f : 0x5865f2
+  const productUrl = `${baseUrl}/products/${product.handle}`
+  const image = product.images?.[0]?.src || null
+  const firstVariant = (product.variants || []).find(v => v.available) || product.variants?.[0]
+  const price = firstVariant?.price ? `$${parseFloat(firstVariant.price).toFixed(2)}` : 'N/A'
+  const variantText = variants.length > 0
+    ? variants.slice(0, 15).join(', ') + (variants.length > 15 ? ` +${variants.length - 15} more` : '')
+    : 'Available'
+
+  const payload = {
+    content: monitor.ping_role ? `<@&${monitor.ping_role}>` : undefined,
+    embeds: [{
+      title: `${isRestock ? '🔄 Restock' : '🆕 New Product'}: ${product.title}`,
+      url: productUrl,
+      color,
+      fields: [
+        { name: 'Price', value: price, inline: true },
+        { name: 'Site', value: monitor.name, inline: true },
+        { name: isRestock ? 'Restocked Sizes' : 'Available Sizes', value: variantText, inline: false }
+      ],
+      footer: { text: `Resell Tracker Monitor • ${monitor.name}` },
+      timestamp: new Date().toISOString()
+    }]
+  }
+  if (image) payload.embeds[0].thumbnail = { url: image }
+  if (!payload.content) delete payload.content
+
+  try {
+    const res = await fetch(monitor.webhook_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000)
+    })
+    if (res.ok) {
+      await pool.query('UPDATE monitors SET last_pinged = NOW() WHERE id = $1', [monitor.id])
+      console.log(`[monitor] Pinged: ${type} on "${product.title}" (${monitor.name})`)
+    }
+  } catch (err) {
+    console.error(`[monitor] Discord ping failed:`, err.message)
+  }
+}
+
+// ── Monitor CRUD routes ───────────────────────────────────────────────────────
+
+app.get('/monitors', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM monitors ORDER BY created_at DESC')
+    res.json(result.rows)
+  } catch (err) {
+    console.error('GET /monitors error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+app.post('/monitors', requireAdmin, async (req, res) => {
+  const { name, siteUrl, keywords, webhookUrl, pingRole, intervalSec } = req.body
+  if (!name || !siteUrl || !webhookUrl) return res.status(400).json({ error: 'name, siteUrl, webhookUrl required' })
+  const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  try {
+    await pool.query(
+      `INSERT INTO monitors (id, name, site_url, keywords, webhook_url, ping_role, interval_sec)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, name, siteUrl, keywords || null, webhookUrl, pingRole || null, parseInt(intervalSec) || 60]
+    )
+    const result = await pool.query('SELECT * FROM monitors WHERE id = $1', [id])
+    const monitor = result.rows[0]
+    scheduleMonitor(monitor)
+    res.json(monitor)
+  } catch (err) {
+    console.error('POST /monitors error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+app.put('/monitors/:id', requireAdmin, async (req, res) => {
+  const { name, siteUrl, keywords, webhookUrl, pingRole, intervalSec, active } = req.body
+  try {
+    await pool.query(
+      `UPDATE monitors SET name=$1, site_url=$2, keywords=$3, webhook_url=$4, ping_role=$5,
+       interval_sec=$6, active=$7 WHERE id=$8`,
+      [name, siteUrl, keywords || null, webhookUrl, pingRole || null,
+       parseInt(intervalSec) || 60, active !== false, req.params.id]
+    )
+    const result = await pool.query('SELECT * FROM monitors WHERE id = $1', [req.params.id])
+    const monitor = result.rows[0]
+    if (monitor.active) scheduleMonitor(monitor)
+    else stopMonitor(monitor.id)
+    res.json(monitor)
+  } catch (err) {
+    console.error('PUT /monitors error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+app.delete('/monitors/:id', requireAdmin, async (req, res) => {
+  try {
+    stopMonitor(req.params.id)
+    await pool.query('DELETE FROM monitor_seen WHERE monitor_id = $1', [req.params.id])
+    await pool.query('DELETE FROM monitors WHERE id = $1', [req.params.id])
+    res.json({ success: true })
+  } catch (err) {
+    console.error('DELETE /monitors error:', err)
     res.status(500).json({ error: 'Database error' })
   }
 })

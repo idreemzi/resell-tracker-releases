@@ -1491,7 +1491,7 @@ function renderMonitors() {
     const keywords  = m.keywords || '—'
     const interval  = m.interval_sec >= 60
       ? `${Math.round(m.interval_sec / 60)}m`
-      : `${m.interval_sec}s`
+      : `${m.interval_sec}s${m.interval_sec <= 10 ? ' ⚡' : ''}`
     const siteHost  = (() => { try { return new URL(m.site_url.startsWith('http') ? m.site_url : 'https://' + m.site_url).hostname } catch { return m.site_url } })()
 
     return `

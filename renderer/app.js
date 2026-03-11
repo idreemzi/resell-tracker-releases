@@ -1065,7 +1065,12 @@ function bindEvents() {
   $('modal-monitor-close').addEventListener('click', () => { $('modal-monitor').style.display = 'none' })
   $('modal-monitor').addEventListener('click', e => { if (e.target === $('modal-monitor')) $('modal-monitor').style.display = 'none' })
 
-  // Monitor type toggle
+  // Site type picker
+  document.querySelectorAll('.mon-site-btn').forEach(btn => {
+    btn.addEventListener('click', () => setMonitorSiteType(btn.dataset.site))
+  })
+
+  // Monitor type toggle (Shopify only)
   $('mon-type-site').addEventListener('click',    () => setMonitorType('site'))
   $('mon-type-product').addEventListener('click', () => setMonitorType('product'))
 
@@ -1079,24 +1084,31 @@ function bindEvents() {
 
   $('btn-monitor-save').addEventListener('click', async () => {
     const name           = $('mon-name').value.trim()
-    const siteUrl        = $('mon-url').value.trim()
-    const isProduct      = $('mon-type-product').classList.contains('active')
-    const productUrl     = isProduct ? $('mon-product-url').value.trim() : null
-    const keywords       = !isProduct ? $('mon-keywords').value.trim() : null
     const webhookUrl     = $('mon-webhook').value.trim()
     const pingRole       = $('mon-role').value.trim()
     const intervalSec    = parseInt($('mon-interval').value) || 60
     const priceAlert     = $('mon-price-alert-track').classList.contains('on')
     const priceThreshold = $('mon-price-threshold').value.trim()
 
-    if (!name || !siteUrl || !webhookUrl) {
-      $('mon-name').focus()
-      return
+    let siteUrl, productUrl, keywords
+    if (monitorSiteType === 'shopify') {
+      siteUrl    = $('mon-url').value.trim()
+      const isProduct = $('mon-type-product').classList.contains('active')
+      productUrl = isProduct ? $('mon-product-url').value.trim() : null
+      keywords   = !isProduct ? $('mon-keywords').value.trim() : null
+      if (!siteUrl) { $('mon-url').focus(); return }
+      if (isProduct && !productUrl) { $('mon-product-url').focus(); return }
+    } else {
+      const retailUrl = $('mon-retail-url').value.trim()
+      if (!retailUrl) { $('mon-retail-url').focus(); return }
+      siteUrl    = retailUrl
+      productUrl = retailUrl
+      keywords   = null
     }
-    if (isProduct && !productUrl) {
-      $('mon-product-url').focus()
-      return
-    }
+
+    if (!name || !webhookUrl) { $('mon-name').focus(); return }
+
+    const proxyUrl = $('mon-proxy').value.trim()
 
     const payload = {
       name, siteUrl,
@@ -1106,7 +1118,9 @@ function bindEvents() {
       pingRole: pingRole || null,
       intervalSec,
       priceAlert,
-      priceThreshold: priceThreshold || null
+      priceThreshold: priceThreshold || null,
+      siteType: monitorSiteType,
+      proxyUrl: proxyUrl || null
     }
 
     if (monitorEditId) {
@@ -1529,7 +1543,8 @@ function renderMonitors() {
         <div class="monitor-status-dot ${active ? 'dot-active' : 'dot-paused'}"></div>
         <span class="monitor-name">${esc(m.name)}</span>
         <span class="monitor-badge ${active ? 'badge-active' : 'badge-paused'}">${active ? 'Active' : 'Paused'}</span>
-        ${m.product_url ? `<span class="monitor-badge" style="background:var(--teal-light);color:var(--teal)">Product</span>` : ''}
+        ${m.site_type && m.site_type !== 'shopify' ? `<span class="monitor-badge monitor-site-badge monitor-site-${esc(m.site_type)}">${({walmart:'Walmart',target:'Target',amazon:'Amazon',bestbuy:'Best Buy'})[m.site_type]||m.site_type}</span>` : ''}
+        ${m.product_url && m.site_type === 'shopify' ? `<span class="monitor-badge" style="background:var(--teal-light);color:var(--teal)">Product</span>` : ''}
         ${m.price_alert ? `<span class="monitor-badge" style="background:var(--orange-light);color:var(--orange)">💰 Price</span>` : ''}
         <div class="monitor-actions">
           <button class="btn-row btn-monitor-toggle" title="${active ? 'Pause' : 'Resume'}" data-id="${esc(m.id)}" data-active="${active}">
@@ -1565,39 +1580,67 @@ function timeAgo(isoString) {
   return `${Math.floor(h / 24)}d ago`
 }
 
+const RETAIL_HINTS = {
+  walmart: 'e.g. https://www.walmart.com/ip/product-name/123456789',
+  target:  'e.g. https://www.target.com/p/product-name/-/A-12345678',
+  amazon:  'e.g. https://www.amazon.com/dp/B09XYZ1234 (may be unreliable due to bot detection)',
+  bestbuy: 'e.g. https://www.bestbuy.com/site/product-name/1234567.p',
+}
+
+let monitorSiteType = 'shopify'
+
 function openMonitorModal(monitor = null) {
   monitorEditId = monitor ? monitor.id : null
   $('modal-monitor-title').textContent = monitor ? 'Edit Monitor' : 'Add Monitor'
   $('btn-monitor-save').textContent    = monitor ? 'Save' : 'Add Monitor'
-  $('mon-name').value          = monitor?.name || ''
-  $('mon-url').value           = monitor?.site_url || ''
-  $('mon-product-url').value   = monitor?.product_url || ''
-  $('mon-keywords').value      = monitor?.keywords || ''
-  $('mon-webhook').value       = monitor?.webhook_url || ''
-  $('mon-role').value          = monitor?.ping_role || ''
-  $('mon-interval').value      = String(monitor?.interval_sec || 60)
+  $('mon-name').value            = monitor?.name || ''
+  $('mon-url').value             = monitor?.site_url || ''
+  $('mon-product-url').value     = monitor?.product_url || ''
+  $('mon-retail-url').value      = monitor?.product_url || monitor?.site_url || ''
+  $('mon-keywords').value        = monitor?.keywords || ''
+  $('mon-webhook').value         = monitor?.webhook_url || ''
+  $('mon-role').value            = monitor?.ping_role || ''
+  $('mon-interval').value        = String(monitor?.interval_sec || 60)
   $('mon-price-threshold').value = monitor?.price_threshold || ''
+  $('mon-proxy').value           = monitor?.proxy_url || ''
 
-  // Set monitor type
+  // Set site type
+  setMonitorSiteType(monitor?.site_type || 'shopify')
+
+  // Set shopify monitor type
   const isProduct = !!(monitor?.product_url)
   setMonitorType(isProduct ? 'product' : 'site')
 
   // Set price alert toggle
   const priceOn = !!(monitor?.price_alert)
-  const track = $('mon-price-alert-track')
-  track.classList.toggle('on', priceOn)
+  $('mon-price-alert-track').classList.toggle('on', priceOn)
   $('mon-price-threshold').style.display = priceOn ? '' : 'none'
 
   $('modal-monitor').style.display = 'flex'
   $('mon-name').focus()
 }
 
+function setMonitorSiteType(type) {
+  monitorSiteType = type
+  document.querySelectorAll('.mon-site-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.site === type)
+  })
+  const isShopify = type === 'shopify'
+  $('mon-shopify-fields').style.display = isShopify ? '' : 'none'
+  $('mon-retail-fields').style.display  = isShopify ? 'none' : ''
+  if (!isShopify) {
+    const hint = RETAIL_HINTS[type] || ''
+    $('mon-retail-hint').textContent = hint
+    $('mon-retail-hint-row').style.display = hint ? '' : 'none'
+  }
+}
+
 function setMonitorType(type) {
   const isSite = type === 'site'
   $('mon-type-site').classList.toggle('active', isSite)
   $('mon-type-product').classList.toggle('active', !isSite)
-  $('mon-product-row').style.display    = isSite ? 'none' : ''
-  $('mon-keywords-row').style.display   = isSite ? '' : 'none'
+  $('mon-product-row').style.display  = isSite ? 'none' : ''
+  $('mon-keywords-row').style.display = isSite ? '' : 'none'
 }
 
 // ── Market Lookup ─────────────────────────────────────────────────────────────

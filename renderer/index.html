@@ -600,23 +600,43 @@
     </div>
     <div class="modal-body">
       <div class="form-row">
-        <input type="text" id="mon-name" class="form-input grow" placeholder="Monitor Name * (e.g. Supreme, Kith)" />
+        <input type="text" id="mon-name" class="form-input grow" placeholder="Monitor Name *" />
       </div>
 
-      <!-- Monitor type toggle -->
-      <div class="monitor-type-toggle">
-        <button class="monitor-type-btn active" id="mon-type-site" data-type="site">Whole Site</button>
-        <button class="monitor-type-btn" id="mon-type-product" data-type="product">Specific Product</button>
+      <!-- Site selector -->
+      <div class="mon-site-picker">
+        <button class="mon-site-btn active" data-site="shopify">🛍 Shopify</button>
+        <button class="mon-site-btn" data-site="walmart" style="--site-color:#0071dc">🟦 Walmart</button>
+        <button class="mon-site-btn" data-site="target"  style="--site-color:#cc0000">🎯 Target</button>
+        <button class="mon-site-btn" data-site="amazon"  style="--site-color:#ff9900">📦 Amazon</button>
+        <button class="mon-site-btn" data-site="bestbuy" style="--site-color:#0046be">🔵 Best Buy</button>
       </div>
 
-      <div class="form-row">
-        <input type="url" id="mon-url" class="form-input grow" placeholder="Shopify Site URL * (e.g. https://kith.com)" />
+      <!-- Shopify-only fields -->
+      <div id="mon-shopify-fields">
+        <div class="monitor-type-toggle">
+          <button class="monitor-type-btn active" id="mon-type-site" data-type="site">Whole Site</button>
+          <button class="monitor-type-btn" id="mon-type-product" data-type="product">Specific Product</button>
+        </div>
+        <div class="form-row">
+          <input type="url" id="mon-url" class="form-input grow" placeholder="Shopify Site URL * (e.g. https://kith.com)" />
+        </div>
+        <div class="form-row" id="mon-product-row" style="display:none">
+          <input type="url" id="mon-product-url" class="form-input grow" placeholder="Product URL * (e.g. https://kith.com/products/nike-dunk-low)" />
+        </div>
+        <div class="form-row" id="mon-keywords-row">
+          <input type="text" id="mon-keywords" class="form-input grow" placeholder="Keywords (comma-separated, optional — e.g. jordan, dunk)" />
+        </div>
       </div>
-      <div class="form-row" id="mon-product-row" style="display:none">
-        <input type="url" id="mon-product-url" class="form-input grow" placeholder="Product URL * (e.g. https://kith.com/products/nike-dunk-low)" />
-      </div>
-      <div class="form-row" id="mon-keywords-row">
-        <input type="text" id="mon-keywords" class="form-input grow" placeholder="Keywords (comma-separated, optional — e.g. jordan, dunk)" />
+
+      <!-- Retail-only fields -->
+      <div id="mon-retail-fields" style="display:none">
+        <div class="form-row">
+          <input type="url" id="mon-retail-url" class="form-input grow" placeholder="Product page URL *" />
+        </div>
+        <div class="form-row" style="display:none" id="mon-retail-hint-row">
+          <p id="mon-retail-hint" class="form-hint"></p>
+        </div>
       </div>
       <div class="form-row">
         <input type="url" id="mon-webhook" class="form-input grow" placeholder="Discord Webhook URL *" />
@@ -632,8 +652,12 @@
       </div>
 
       <div class="form-row">
+        <input type="url" id="mon-proxy" class="form-input grow" placeholder="Proxy URL (optional — e.g. http://user:pass@host:port)" />
+      </div>
+      <div class="form-row">
         <input type="text" id="mon-role" class="form-input grow" placeholder="Role ID to ping (optional)" />
         <select id="mon-interval" class="form-input w160">
+          <option value="3">Every 3s ⚡ (proxy recommended)</option>
           <option value="5">Every 5s ⚡ (fastest)</option>
           <option value="10">Every 10s 🔥</option>
           <option value="20">Every 20s</option>

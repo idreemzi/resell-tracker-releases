@@ -4,6 +4,7 @@ const jwt     = require('jsonwebtoken')
 const fs      = require('fs')
 const path    = require('path')
 const { Pool } = require('pg')
+const { HttpsProxyAgent } = require('https-proxy-agent')
 
 const app = express()
 app.use(express.json())
@@ -82,6 +83,8 @@ async function initDB() {
   await pool.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS product_url TEXT`)
   await pool.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS price_alert BOOLEAN DEFAULT false`)
   await pool.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS price_threshold TEXT`)
+  await pool.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS site_type TEXT DEFAULT 'shopify'`)
+  await pool.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS proxy_url TEXT`)
   startMonitorEngine()
   console.log('Database ready')
 }
@@ -353,6 +356,224 @@ function stopMonitor(monitorId) {
   if (timer) { clearInterval(timer); monitorTimers.delete(monitorId) }
 }
 
+// ── Retail site scrapers ──────────────────────────────────────────────────────
+const SCRAPE_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+}
+
+// Proxy-aware fetch — routes through proxy if proxyUrl is set
+function proxyFetch(url, options = {}, proxyUrl) {
+  if (proxyUrl) {
+    options.agent = new HttpsProxyAgent(proxyUrl)
+  }
+  return fetch(url, options)
+}
+
+async function fetchWalmart(productUrl, proxyUrl) {
+  try {
+    const res = await proxyFetch(productUrl, { headers: SCRAPE_HEADERS, signal: AbortSignal.timeout(15000) }, proxyUrl)
+    const html = await res.text()
+    const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]+?)<\/script>/)
+    if (!match) return null
+    const data = JSON.parse(match[1])
+    const p = data?.props?.pageProps?.initialData?.data?.product
+    if (!p) return null
+    return {
+      title: p.name,
+      price: p.priceInfo?.currentPrice?.price ?? p.priceInfo?.wasPrice?.price ?? null,
+      available: p.availabilityStatus === 'IN_STOCK',
+      image: p.imageInfo?.thumbnailUrl || null,
+      url: productUrl
+    }
+  } catch { return null }
+}
+
+async function fetchTarget(productUrl, proxyUrl) {
+  try {
+    const tcinMatch = productUrl.match(/A-(\d+)/)
+    if (!tcinMatch) return null
+    const tcin = tcinMatch[1]
+    const apiUrl = `https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1?tcin=${tcin}&scheduled_delivery_store_id=3991&store_id=3991&zip=10001&state=NY&latitude=40.7128&longitude=-74.0060&country=US&channel=WEB&page=%2Fp%2FA-${tcin}`
+    const res = await proxyFetch(apiUrl, {
+      headers: { ...SCRAPE_HEADERS, Accept: 'application/json', Referer: productUrl },
+      signal: AbortSignal.timeout(15000)
+    }, proxyUrl)
+    if (!res.ok) return null
+    const data = await res.json()
+    const p = data?.data?.product
+    if (!p) return null
+    const avail = p.availability?.availability_status
+    return {
+      title: p.item?.product_description?.title || null,
+      price: p.price?.current_retail ?? null,
+      available: avail === 'IN_STOCK' || avail === 'LIMITED_STOCK',
+      image: p.item?.enrichment?.images?.primary_image_url || null,
+      url: productUrl
+    }
+  } catch { return null }
+}
+
+async function fetchAmazon(productUrl, proxyUrl) {
+  try {
+    const res = await proxyFetch(productUrl, {
+      headers: { ...SCRAPE_HEADERS, 'Cache-Control': 'no-cache', 'Accept-Encoding': 'gzip, deflate, br' },
+      signal: AbortSignal.timeout(15000)
+    }, proxyUrl)
+    if (!res.ok) return null
+    const html = await res.text()
+    if (html.includes('Type the characters') || html.includes('robot check') || html.includes('CAPTCHA')) {
+      console.log('[amazon] Bot detection triggered — try again later')
+      return null
+    }
+    const titleMatch = html.match(/id="productTitle"[^>]*>\s*([\s\S]+?)\s*<\/span>/)
+    let price = null
+    for (const pat of [
+      /"priceAmount":"?([\d.]+)"?/,
+      /class="a-price-whole">(\d+)</,
+      /id="priceblock_ourprice"[^>]*>\$?([\d,]+\.?\d*)/,
+      /id="priceblock_dealprice"[^>]*>\$?([\d,]+\.?\d*)/,
+    ]) {
+      const m = html.match(pat)
+      if (m) { price = parseFloat(m[1].replace(',', '')); break }
+    }
+    const available = (html.includes('In Stock') || html.includes('Add to Cart') || html.includes('"availabilityType":"now"'))
+      && !html.includes('Currently unavailable') && !html.includes('Temporarily out of stock')
+    const imageMatch = html.match(/"hiRes":"(https:[^"]+\.jpg[^"]*)"/) || html.match(/"large":"(https:[^"]+\.jpg[^"]*)"/)
+    return {
+      title: titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : 'Amazon Product',
+      price,
+      available,
+      image: imageMatch ? imageMatch[1].replace(/\\u002F/g, '/') : null,
+      url: productUrl
+    }
+  } catch { return null }
+}
+
+async function fetchBestBuy(productUrl, proxyUrl) {
+  try {
+    const skuMatch = productUrl.match(/\/(\d{7,})\.p/) || productUrl.match(/skuId=(\d+)/)
+    if (!skuMatch) return null
+    const sku = skuMatch[1]
+    const res = await proxyFetch(`https://www.bestbuy.com/api/3.0/priceBlocks?skus=${sku}`, {
+      headers: { ...SCRAPE_HEADERS, Accept: 'application/json', Referer: 'https://www.bestbuy.com/' },
+      signal: AbortSignal.timeout(15000)
+    }, proxyUrl)
+    if (!res.ok) return null
+    const data = await res.json()
+    const item = Array.isArray(data) ? data[0] : data
+    if (!item) return null
+    const btnState = item.buttonState?.buttonState
+    const available = btnState !== 'SOLD_OUT' && btnState !== 'COMING_SOON' && btnState !== 'PRE_ORDER_ONLY'
+    return {
+      title: item.names?.shortName || item.names?.name || `Best Buy SKU ${sku}`,
+      price: item.priceBlock?.customerPrice?.currentPrice ?? null,
+      available,
+      image: null,
+      url: productUrl
+    }
+  } catch { return null }
+}
+
+const RETAIL_FETCHERS = { walmart: fetchWalmart, target: fetchTarget, amazon: fetchAmazon, bestbuy: fetchBestBuy }
+
+async function runRetailMonitor(monitor) {
+  const fetcher = RETAIL_FETCHERS[monitor.site_type]
+  if (!fetcher) return
+  const productUrl = (monitor.product_url || monitor.site_url).trim()
+  const product = await fetcher(productUrl, monitor.proxy_url || null)
+  if (!product) return
+
+  const seenCount = await pool.query('SELECT COUNT(*) FROM monitor_seen WHERE monitor_id = $1', [monitor.id])
+  const isFirstRun = parseInt(seenCount.rows[0].count) === 0
+  const currentState = { available: product.available, price: product.price != null ? String(product.price) : null }
+
+  if (isFirstRun) {
+    await pool.query(
+      `INSERT INTO monitor_seen (monitor_id, product_id, variant_data, updated_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING`,
+      [monitor.id, productUrl, JSON.stringify({ _: currentState })]
+    )
+    return
+  }
+
+  const seen = await pool.query(
+    'SELECT variant_data FROM monitor_seen WHERE monitor_id = $1 AND product_id = $2',
+    [monitor.id, productUrl]
+  )
+  let prevState = { available: false, price: null }
+  if (seen.rows.length === 0) {
+    await pool.query(
+      `INSERT INTO monitor_seen (monitor_id, product_id, variant_data, updated_at) VALUES ($1, $2, $3, NOW())`,
+      [monitor.id, productUrl, JSON.stringify({ _: currentState })]
+    )
+    if (currentState.available) await sendRetailPing(monitor, product, 'restock', {})
+    return
+  }
+  prevState = parseVariantState(seen.rows[0].variant_data?._)
+
+  await pool.query(
+    `UPDATE monitor_seen SET variant_data = $1, updated_at = NOW() WHERE monitor_id = $2 AND product_id = $3`,
+    [JSON.stringify({ _: currentState }), monitor.id, productUrl]
+  )
+
+  if (currentState.available && !prevState.available) {
+    await sendRetailPing(monitor, product, 'restock', {})
+  }
+  if (monitor.price_alert && currentState.price && prevState.price) {
+    const currP = parseFloat(currentState.price)
+    const prevP = parseFloat(prevState.price)
+    if (currP < prevP) {
+      const threshold = monitor.price_threshold ? parseFloat(monitor.price_threshold) : null
+      if (!threshold || currP <= threshold) {
+        await sendRetailPing(monitor, product, 'price_drop', { oldPrice: prevP, newPrice: currP })
+      }
+    }
+  }
+}
+
+async function sendRetailPing(monitor, product, type, extra) {
+  const SITE_LABELS = { walmart: 'Walmart', target: 'Target', amazon: 'Amazon', bestbuy: 'Best Buy' }
+  const siteLabel = SITE_LABELS[monitor.site_type] || monitor.name
+  const color = type === 'price_drop' ? 0xff9500 : 0x00ff7f
+  let title, fields
+
+  if (type === 'price_drop') {
+    title = `💰 Price Drop: ${product.title}`
+    fields = [
+      { name: 'Was', value: `$${extra.oldPrice.toFixed(2)}`, inline: true },
+      { name: 'Now', value: `$${extra.newPrice.toFixed(2)}`, inline: true },
+      { name: 'Saved', value: `$${(extra.oldPrice - extra.newPrice).toFixed(2)}`, inline: true },
+      { name: 'Site', value: siteLabel, inline: false }
+    ]
+  } else {
+    title = `🔄 Back In Stock: ${product.title}`
+    fields = [
+      { name: 'Price', value: product.price != null ? `$${parseFloat(product.price).toFixed(2)}` : 'N/A', inline: true },
+      { name: 'Site', value: siteLabel, inline: true },
+      { name: 'Status', value: '✅ In Stock', inline: true }
+    ]
+  }
+
+  const payload = {
+    content: monitor.ping_role ? `<@&${monitor.ping_role}>` : undefined,
+    embeds: [{ title, url: product.url, color, fields, footer: { text: `Resell Tracker Monitor • ${monitor.name}` }, timestamp: new Date().toISOString() }]
+  }
+  if (product.image) payload.embeds[0].thumbnail = { url: product.image }
+  if (!payload.content) delete payload.content
+
+  try {
+    const res = await fetch(monitor.webhook_url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(10000)
+    })
+    if (res.ok) {
+      await pool.query('UPDATE monitors SET last_pinged = NOW() WHERE id = $1', [monitor.id])
+      console.log(`[monitor] Pinged: ${type} on "${product.title}" (${monitor.name})`)
+    }
+  } catch (err) { console.error(`[monitor] Discord ping failed:`, err.message) }
+}
+
 // Parse stored variant state — handles old boolean format and new {available, price} format
 function parseVariantState(stored) {
   if (stored === null || stored === undefined) return { available: false, price: null }
@@ -367,6 +588,11 @@ async function runMonitor(monitorId) {
     if (!result.rows.length) return
     monitor = result.rows[0]
   } catch { return }
+
+  // Dispatch to retail scraper for non-Shopify sites
+  if (monitor.site_type && monitor.site_type !== 'shopify') {
+    return runRetailMonitor(monitor)
+  }
 
   let baseUrl = monitor.site_url.trim().replace(/\/$/, '')
   if (!baseUrl.startsWith('http')) baseUrl = 'https://' + baseUrl
@@ -570,15 +796,15 @@ app.get('/monitors', requireAdmin, async (req, res) => {
 })
 
 app.post('/monitors', requireAdmin, async (req, res) => {
-  const { name, siteUrl, productUrl, keywords, webhookUrl, pingRole, intervalSec, priceAlert, priceThreshold } = req.body
+  const { name, siteUrl, productUrl, keywords, webhookUrl, pingRole, intervalSec, priceAlert, priceThreshold, siteType, proxyUrl } = req.body
   if (!name || !siteUrl || !webhookUrl) return res.status(400).json({ error: 'name, siteUrl, webhookUrl required' })
   const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   try {
     await pool.query(
-      `INSERT INTO monitors (id, name, site_url, product_url, keywords, webhook_url, ping_role, interval_sec, price_alert, price_threshold)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      `INSERT INTO monitors (id, name, site_url, product_url, keywords, webhook_url, ping_role, interval_sec, price_alert, price_threshold, site_type, proxy_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [id, name, siteUrl, productUrl || null, keywords || null, webhookUrl,
-       pingRole || null, parseInt(intervalSec) || 60, !!priceAlert, priceThreshold || null]
+       pingRole || null, parseInt(intervalSec) || 60, !!priceAlert, priceThreshold || null, siteType || 'shopify', proxyUrl || null]
     )
     const result = await pool.query('SELECT * FROM monitors WHERE id = $1', [id])
     const monitor = result.rows[0]
@@ -591,14 +817,14 @@ app.post('/monitors', requireAdmin, async (req, res) => {
 })
 
 app.put('/monitors/:id', requireAdmin, async (req, res) => {
-  const { name, siteUrl, productUrl, keywords, webhookUrl, pingRole, intervalSec, active, priceAlert, priceThreshold } = req.body
+  const { name, siteUrl, productUrl, keywords, webhookUrl, pingRole, intervalSec, active, priceAlert, priceThreshold, siteType, proxyUrl } = req.body
   try {
     await pool.query(
       `UPDATE monitors SET name=$1, site_url=$2, product_url=$3, keywords=$4, webhook_url=$5,
-       ping_role=$6, interval_sec=$7, active=$8, price_alert=$9, price_threshold=$10 WHERE id=$11`,
+       ping_role=$6, interval_sec=$7, active=$8, price_alert=$9, price_threshold=$10, site_type=$11, proxy_url=$12 WHERE id=$13`,
       [name, siteUrl, productUrl || null, keywords || null, webhookUrl,
        pingRole || null, parseInt(intervalSec) || 60, active !== false,
-       !!priceAlert, priceThreshold || null, req.params.id]
+       !!priceAlert, priceThreshold || null, siteType || 'shopify', proxyUrl || null, req.params.id]
     )
     const result = await pool.query('SELECT * FROM monitors WHERE id = $1', [req.params.id])
     const monitor = result.rows[0]

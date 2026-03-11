@@ -1,5 +1,5 @@
 require('dotenv').config()
-const express = require('express')
+const express = require('express') // v2
 const jwt     = require('jsonwebtoken')
 const fs      = require('fs')
 const path    = require('path')

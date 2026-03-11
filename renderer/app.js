@@ -1197,12 +1197,15 @@ function renderHome() {
         ? `<img class="home-release-img" src="${esc(r.imageUrl)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="home-release-img-placeholder" style="display:none">👟</div>`
         : `<div class="home-release-img-placeholder">👟</div>`
 
+      const localTimeDisplay = utcTimeToLocalDisplay(r.date, r.releaseTime)
+
       return `<div class="home-release-card${isPast ? ' release-past' : ''}" data-id="${esc(r.id)}">
         ${imgHtml}
         <div class="home-release-info">
           <div class="home-release-name">${esc(r.name)}</div>
           <div class="home-release-meta">
             <span class="home-release-date${isToday ? ' today' : ''}">${dateLabel}</span>
+            ${localTimeDisplay ? `<span class="home-release-time">⏰ ${localTimeDisplay}</span>` : ''}
             ${r.retailPrice ? `<span class="home-release-price">Retail: $${parseFloat(r.retailPrice).toFixed(2)}</span>` : ''}
           </div>
           ${r.notes ? `<div class="home-release-notes">${esc(r.notes)}</div>` : ''}
@@ -1244,6 +1247,32 @@ function initHome() {
   })
 }
 
+// ── Timezone helpers ──────────────────────────────────────────────────────────
+// Convert local time string (HH:MM) + date (YYYY-MM-DD) → UTC time string (HH:MM)
+function localTimeToUtc(dateStr, localTime) {
+  if (!localTime || !dateStr) return null
+  const dt = new Date(`${dateStr}T${localTime}:00`)
+  const h = String(dt.getUTCHours()).padStart(2, '0')
+  const m = String(dt.getUTCMinutes()).padStart(2, '0')
+  return `${h}:${m}`
+}
+
+// Convert UTC time string (HH:MM) + date → local time string (HH:MM) for input
+function utcTimeToLocalInput(dateStr, utcTime) {
+  if (!utcTime || !dateStr) return ''
+  const dt = new Date(`${dateStr}T${utcTime}:00Z`)
+  const h = String(dt.getHours()).padStart(2, '0')
+  const m = String(dt.getMinutes()).padStart(2, '0')
+  return `${h}:${m}`
+}
+
+// Convert UTC time string (HH:MM) + date → human-readable local time (e.g. "10:00 AM EDT")
+function utcTimeToLocalDisplay(dateStr, utcTime) {
+  if (!utcTime || !dateStr) return null
+  const dt = new Date(`${dateStr}T${utcTime}:00Z`)
+  return dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+}
+
 // ── Release CRUD ──────────────────────────────────────────────────────────────
 let releaseEditId = null
 
@@ -1255,6 +1284,7 @@ function openReleaseModal(release = null) {
   $('rl-date').value   = release?.date        || today()
   $('rl-image').value  = release?.imageUrl    || ''
   $('rl-retail').value = release?.retailPrice || ''
+  $('rl-time').value   = release?.releaseTime ? utcTimeToLocalInput(release.date, release.releaseTime) : ''
   $('rl-link').value   = release?.link        || ''
   $('rl-notes').value  = release?.notes       || ''
   $('modal-release').style.display = 'flex'
@@ -1272,11 +1302,13 @@ async function saveRelease() {
   const date = $('rl-date').value.trim()
   if (!name || !date) return
 
+  const localTime = $('rl-time').value
   const payload = {
     name,
     date,
     imageUrl:    $('rl-image').value.trim()  || null,
     retailPrice: $('rl-retail').value        || null,
+    releaseTime: localTimeToUtc(date, localTime),
     link:        $('rl-link').value.trim()   || null,
     notes:       $('rl-notes').value.trim()  || null
   }

@@ -168,8 +168,10 @@ async function loadData() {
     $('tab-monitors').style.display = ''
     renderMonitors()
     // Start local monitors (Best Buy / Amazon) in Electron main process
+    console.log('[monitors] loaded:', monitors.map(m => ({ id: m.id, name: m.name, site_type: m.site_type, active: m.active })))
     const localMonitors = monitors.filter(m => m.active && (m.site_type === 'bestbuy' || m.site_type === 'amazon'))
-    if (localMonitors.length) window.api.localMonitors.start(localMonitors).catch(() => {})
+    console.log('[monitors] local candidates:', localMonitors.length, localMonitors.map(m => m.name))
+    if (localMonitors.length) window.api.localMonitors.start(localMonitors).catch(err => console.error('[monitors] localMonitors.start failed:', err))
   }
   renderAll()
   autoRefreshPackages()

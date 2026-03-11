@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Resell Tracker</title>
   <link rel="stylesheet" href="app.css" />
+  <script>
+    // Apply saved theme before render to prevent flash
+    if (localStorage.getItem('rt-theme') === 'dark')
+      document.documentElement.setAttribute('data-theme', 'dark')
+  </script>
 </head>
 <body>
 
@@ -13,7 +18,7 @@
   <!-- ── Top Nav ─────────────────────────────────────────────────────── -->
   <nav class="topnav">
     <div class="nav-logo">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+      <img src="logo.png" width="42" height="42" style="display:block;object-fit:contain" />
     </div>
     <div class="nav-tabs">
       <button class="tab-btn tab-sales active" data-view="sales">
@@ -33,7 +38,11 @@
       <button class="btn-settings" id="btn-open-settings" title="Settings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
-      <div class="nav-user">RT</div>
+      <div class="nav-user" id="nav-user-avatar">RT</div>
+      <div class="win-controls">
+        <button class="win-btn win-minimize" id="btn-minimize" title="Minimize"></button>
+        <button class="win-btn win-close"    id="btn-close"    title="Close"></button>
+      </div>
     </div>
   </nav>
 
@@ -44,13 +53,6 @@
     <div id="view-sales" class="view active">
       <div class="page-header">
         <h1 class="page-title">Sales <span class="page-count" id="sales-count">0 Total</span></h1>
-        <div class="header-right">
-          <div class="search-wrap">
-            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="sales-search" class="search-input" placeholder="Search…" />
-          </div>
-          <button class="btn-add" id="btn-add-sale">Add</button>
-        </div>
       </div>
 
       <div class="sales-layout">
@@ -64,37 +66,47 @@
             </div>
           </div>
           <div class="chart-wrap">
-            <svg id="sales-chart" width="100%" height="180"></svg>
+            <svg id="sales-chart" width="100%" height="150"></svg>
             <div class="chart-legend">
-              <span class="legend-item"><span class="legend-dot spent"></span>Spent</span>
-              <span class="legend-item"><span class="legend-dot revenue"></span>Revenue</span>
-              <span class="legend-item"><span class="legend-dot profit"></span>Profit</span>
+              <span class="legend-item" id="legend-spent"><span class="legend-dot spent"></span>Spent</span>
+              <span class="legend-item" id="legend-revenue"><span class="legend-dot revenue"></span>Revenue</span>
+              <span class="legend-item" id="legend-profit"><span class="legend-dot profit"></span>Profit</span>
             </div>
           </div>
         </div>
 
-        <!-- Stat Cards -->
-        <div class="stat-cards-col">
-          <div class="stat-card">
-            <div class="stat-icon spent-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+        <!-- Right: Stat Cards + Controls -->
+        <div class="sales-right">
+          <div class="stat-cards-row">
+            <div class="stat-card">
+              <div class="stat-label">Spent</div>
+              <div class="stat-icon spent-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+              </div>
+              <div class="stat-value" id="stat-spent">$0</div>
             </div>
-            <div class="stat-label">Spent</div>
-            <div class="stat-value" id="stat-spent">$0</div>
+            <div class="stat-card">
+              <div class="stat-label">Revenue</div>
+              <div class="stat-icon revenue-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              </div>
+              <div class="stat-value" id="stat-revenue">$0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Profit</div>
+              <div class="stat-icon profit-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              </div>
+              <div class="stat-value profit-val" id="stat-profit">$0</div>
+            </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-icon revenue-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+
+          <div class="sales-controls">
+            <div class="search-wrap" style="flex:1">
+              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="sales-search" class="search-input" style="width:100%" placeholder="Search…" />
             </div>
-            <div class="stat-label">Revenue</div>
-            <div class="stat-value" id="stat-revenue">$0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon profit-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-            </div>
-            <div class="stat-label">Profit</div>
-            <div class="stat-value profit-val" id="stat-profit">$0</div>
+            <button class="btn-add" id="btn-add-sale">Add</button>
           </div>
         </div>
       </div>
@@ -179,6 +191,14 @@
     </div>
 
   </main>
+
+  <!-- ── Status Bar ──────────────────────────────────────────────────── -->
+  <footer class="statusbar">
+    <span id="status-version">Version —</span>
+    <span class="statusbar-dot">•</span>
+    <span id="status-clock">—</span>
+  </footer>
+
 </div>
 
 <!-- ── Add/Edit Sale Modal ──────────────────────────────────────────── -->
@@ -234,7 +254,10 @@
       <div class="form-row">
         <input type="text"   id="i-product"  class="form-input grow" placeholder="Product Name*" />
         <input type="text"   id="i-size"     class="form-input w120" placeholder="Size" />
-        <input type="number" id="i-qty"      class="form-input w120" placeholder="Qty" min="1" step="1" value="1" />
+        <div style="display:flex;flex-direction:column;gap:3px;width:120px">
+          <label for="i-qty" style="font-size:10px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em">Quantity (# of units)</label>
+          <input type="number" id="i-qty" class="form-input" style="width:100%" placeholder="Qty" min="1" step="1" value="1" />
+        </div>
       </div>
       <div class="form-row">
         <input type="text"   id="i-store"    class="form-input grow" placeholder="Store" />
@@ -353,15 +376,18 @@
       <button class="modal-close" id="modal-settings-close">✕</button>
     </div>
     <div class="modal-body">
-      <div style="margin-bottom:16px">
-        <label style="display:block;font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">17track API Key</label>
-        <input type="text" id="settings-api-key" class="form-input" style="width:100%" placeholder="Paste your 17track API key here" autocomplete="off" />
-        <p style="margin-top:8px;font-size:12px;color:var(--text-dim);line-height:1.5">
-          Required for reliable package tracking. Get a free key (100/day) at
-          <a id="link-17track" href="#" style="color:var(--blue);text-decoration:none">17track.net/en/apipage</a>
-        </p>
-        <div id="settings-api-status" style="margin-top:8px;font-size:12px;font-weight:600;display:none"></div>
+      <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Dark / Neon Mode</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-top:3px">Dark background with neon glow accents</div>
+          </div>
+          <div class="toggle-track" id="dark-mode-track">
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
       </div>
+      <div id="settings-api-status" style="margin-top:4px;font-size:12px;font-weight:600;display:none"></div>
     </div>
     <div class="modal-footer" style="justify-content:space-between">
       <button class="btn-danger" id="btn-logout" style="font-size:13px;padding:8px 16px">Sign Out</button>

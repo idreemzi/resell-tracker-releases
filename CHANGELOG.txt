@@ -1,6 +1,33 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
+v1.5.2 — 2026-03-10
+--------------------
+FIXED
+  - Dark mode topnav no longer shows a cream/tan border — replaced with a
+    subtle dark separator.
+  - Inventory "Add Product" modal now shows a "Quantity (# of units)" label
+    above the qty field so users understand what the value represents.
+
+v1.5.1 — 2026-03-10
+--------------------
+SECURITY
+  - Auth verification now happens server-side on every app launch — removing a
+    user's Discord subscriber role takes effect immediately on next open.
+  - Discord OAuth client secret moved off the app entirely and onto a private
+    backend server (Railway). The secret is no longer bundled in the .exe.
+  - Login now issues a signed JWT (RS256) — tokens cannot be forged without
+    the server's private key.
+  - JWT is bound to the device it was issued on — auth files cannot be shared
+    between machines.
+
+v1.5.0 — 2026-03-10
+--------------------
+SECURITY
+  - Rearchitected Discord authentication to use a server-side auth backend.
+  - Client secret removed from the app bundle.
+  - JWT-based session with device fingerprinting.
+
 v1.4.0 — 2026-03-10
 --------------------
 ADDED

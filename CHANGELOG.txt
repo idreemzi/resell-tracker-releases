@@ -1,6 +1,11 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
+v1.5.3 — 2026-03-10
+--------------------
+CHANGED
+  - Version bump to trigger auto-update delivery for v1.5.2 changes.
+
 v1.5.2 — 2026-03-10
 --------------------
 ADDED

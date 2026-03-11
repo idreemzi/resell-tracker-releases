@@ -21,7 +21,11 @@
       <img src="logo.png" width="42" height="42" style="display:block;object-fit:contain" />
     </div>
     <div class="nav-tabs">
-      <button class="tab-btn tab-sales active" data-view="sales">
+      <button class="tab-btn tab-home active" data-view="home">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Home
+      </button>
+      <button class="tab-btn tab-sales" data-view="sales">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
         Sales
       </button>
@@ -59,8 +63,84 @@
   <!-- ── Content ─────────────────────────────────────────────────────── -->
   <main class="content">
 
+    <!-- ── Home View ───────────────────────────────────────────────── -->
+    <div id="view-home" class="view active">
+      <div class="page-header">
+        <h1 class="page-title">Home <span class="page-count" id="home-release-count"></span></h1>
+        <div class="header-right">
+          <button class="btn-add" id="btn-add-release" style="display:none">+ Release</button>
+        </div>
+      </div>
+
+      <div class="home-layout">
+
+        <!-- Left column: calendar + pinned -->
+        <div class="home-left-col">
+
+        <!-- Calendar card -->
+        <div class="home-cal-card">
+          <!-- Left accent panel -->
+          <div class="home-cal-left">
+            <div class="home-cal-bigday" id="home-big-day">1</div>
+            <div class="home-cal-dayname" id="home-day-name">Monday</div>
+            <div class="home-cal-monthyear" id="home-cal-monthyear">January 2026</div>
+            <svg class="home-cal-deco" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" opacity=".18">
+              <rect x="5" y="5" width="70" height="70" rx="12" stroke="white" stroke-width="4"/>
+              <line x1="5" y1="22" x2="75" y2="22" stroke="white" stroke-width="3"/>
+              <line x1="24" y1="5" x2="24" y2="22" stroke="white" stroke-width="3"/>
+              <line x1="56" y1="5" x2="56" y2="22" stroke="white" stroke-width="3"/>
+            </svg>
+          </div>
+          <!-- Right calendar grid -->
+          <div class="home-cal-right">
+            <div class="home-cal-nav">
+              <span id="home-cal-year" class="home-cal-year-dim">2026</span>
+              <span id="home-cal-title" class="home-cal-month-title">March</span>
+            </div>
+            <div class="home-cal-grid-wrap">
+              <button class="cal-nav-btn" id="cal-prev">&#8249;</button>
+              <div class="home-cal-grid-inner">
+              <div class="cal-dow-row">
+                <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+              </div>
+              <div class="cal-grid" id="home-cal-grid"></div>
+              </div><!-- end home-cal-grid-inner -->
+              <button class="cal-nav-btn" id="cal-next">&#8250;</button>
+            </div><!-- end home-cal-grid-wrap -->
+          </div>
+        </div>
+
+        <!-- Pinned Messages -->
+        <div class="home-pinned-section">
+          <div class="home-pinned-card">
+            <div class="home-pinned-header">
+              <div class="home-pinned-title">📌 Pinned Info</div>
+              <button class="btn-add" id="btn-add-pinned" style="display:none;font-size:12px;padding:6px 12px">+ Message</button>
+            </div>
+            <div class="home-pinned-messages" id="home-pinned-messages"></div>
+          </div>
+        </div>
+
+        </div><!-- end home-left-col -->
+
+        <!-- Right: Today + upcoming releases -->
+        <div class="home-right-panel">
+          <div class="home-right-card">
+            <div class="home-today-heading">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span id="home-today-title">—</span>
+            </div>
+            <div id="home-releases-list" class="home-upcoming-list"></div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
     <!-- ── Sales View ──────────────────────────────────────────────── -->
-    <div id="view-sales" class="view active">
+    <div id="view-sales" class="view">
       <div class="page-header">
         <h1 class="page-title">Sales <span class="page-count" id="sales-count">0 Total</span></h1>
       </div>
@@ -441,6 +521,53 @@
         <button class="btn-ghost" id="btn-settings-cancel">Cancel</button>
         <button class="btn-add modal-submit" id="btn-settings-save">Save</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add/Edit Pinned Message Modal ────────────────────────────────── -->
+<div id="modal-pinned" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-pinned-title">Add Pinned Message</h2>
+      <button class="modal-close" id="modal-pinned-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <textarea id="pm-content" class="form-input" rows="4" placeholder="Type your message... (e.g. 'Nike SNKRS drops Friday at 10am EST — expect W rates to be low')" style="resize:vertical;width:100%;min-height:90px"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-add modal-submit" id="btn-pinned-save">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add/Edit Release Modal ───────────────────────────────────────── -->
+<div id="modal-release" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-release-title">Add Release</h2>
+      <button class="modal-close" id="modal-release-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <input type="text"   id="rl-name"   class="form-input grow" placeholder="Product Name *" />
+        <input type="date"   id="rl-date"   class="form-input w160" />
+      </div>
+      <div class="form-row">
+        <input type="url"    id="rl-image"  class="form-input grow" placeholder="Image URL (optional)" />
+        <input type="number" id="rl-retail" class="form-input w160" placeholder="Retail Price" min="0" step="0.01" />
+      </div>
+      <div class="form-row">
+        <input type="url"    id="rl-link"   class="form-input grow" placeholder="Product Link (e.g. https://snkrs.com/...)" />
+      </div>
+      <div class="form-row">
+        <input type="text"   id="rl-notes"  class="form-input grow" placeholder="Notes (e.g. Nike SNKRS, 10am EST)" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-add modal-submit" id="btn-release-save">Add</button>
     </div>
   </div>
 </div>

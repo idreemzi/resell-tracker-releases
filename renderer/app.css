@@ -590,7 +590,7 @@ html, body {
   transition: background .15s, color .15s;
 }
 .market-mode-btn.active {
-  background: var(--accent);
+  background: #8b5cf6;
   color: #fff;
 }
 .market-mode-btn:not(.active):hover { background: var(--bg); }
@@ -1253,6 +1253,432 @@ button svg, .btn-row svg, .btn-add svg, .tab-btn svg { pointer-events: none; }
 }
 .statusbar-dot { color: var(--border); }
 
+/* ── Home Tab ────────────────────────────────────────────────────────── */
+:root { --tab-home: #3b82f6; }
+.tab-home  { border-color: var(--tab-home); color: var(--tab-home); }
+.tab-btn.active.tab-home { background: var(--tab-home); color: #fff; border-color: var(--tab-home); }
+
+/* ── Home Layout ─────────────────────────────────────────────────────── */
+.home-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 20px;
+  align-items: start;
+}
+.home-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  max-width: 780px;
+}
+
+/* Calendar card */
+.home-cal-card {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+/* Left accent */
+.home-cal-left {
+  width: 190px;
+  flex-shrink: 0;
+  background: linear-gradient(160deg, #1d4ed8 0%, #3b82f6 100%);
+  padding: 28px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  gap: 2px;
+}
+.home-cal-bigday {
+  font-size: 84px;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: -4px;
+}
+.home-cal-dayname {
+  font-size: 18px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-top: 6px;
+}
+.home-cal-monthyear {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.6);
+  margin-top: 3px;
+  display: none; /* year shown in grid header instead */
+}
+.home-cal-deco {
+  position: absolute;
+  bottom: -14px;
+  right: -14px;
+  width: 90px;
+  height: 90px;
+  opacity: .15;
+}
+
+/* Right calendar grid */
+.home-cal-right {
+  flex: 1;
+  padding: 20px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Month title row: year top-right, month centered */
+.home-cal-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  margin-bottom: 4px;
+}
+.home-cal-year-dim {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.home-cal-month-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* Grid wrapper with arrows on sides */
+.home-cal-grid-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.home-cal-grid-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cal-nav-btn {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s;
+  line-height: 1;
+}
+.cal-nav-btn:hover { background: var(--surface); }
+
+.cal-dow-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  gap: 2px;
+}
+.cal-dow-row span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.cal-day {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  border-radius: 50%;
+  cursor: default;
+  transition: background .1s;
+}
+.cal-day:hover { background: var(--surface2); }
+.cal-day-other { color: var(--text-dim); opacity: .4; }
+.cal-day-today {
+  background: #f97316;
+  color: #fff !important;
+  font-weight: 700;
+  width: 38px;
+  height: 38px;
+  justify-self: center;
+}
+.cal-day-today:hover { background: #ea6c0a; }
+.cal-day-release {
+  background: #3b82f6;
+  color: #fff !important;
+  font-weight: 700;
+  width: 38px;
+  height: 38px;
+  justify-self: center;
+}
+.cal-day-release:hover { background: #2563eb; }
+.cal-day-today.cal-day-release {
+  background: linear-gradient(135deg, #f97316, #3b82f6);
+  width: 38px;
+  height: 38px;
+  justify-self: center;
+}
+
+/* Home right panel */
+.home-right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.home-right-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+.home-today-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.home-upcoming-list { display: flex; flex-direction: column; gap: 10px; }
+.home-upcoming-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+}
+.home-upcoming-icon { font-size: 22px; flex-shrink: 0; }
+.home-upcoming-info { display: flex; flex-direction: column; gap: 2px; }
+.home-upcoming-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.home-upcoming-date {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.home-upcoming-date.today {
+  color: #8b5cf6;
+  font-weight: 700;
+}
+.home-upcoming-empty {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 14px 0;
+}
+
+/* Release cards */
+.home-release-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  position: relative;
+}
+.home-release-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.home-release-img-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  flex-shrink: 0;
+}
+.home-release-info { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.home-release-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-release-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.home-release-date {
+  font-size: 11px;
+  font-weight: 700;
+  color: #3b82f6;
+}
+.home-release-date.today { color: #f97316; }
+.home-release-price {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.home-release-link {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #3b82f6;
+  cursor: pointer;
+  text-decoration: none;
+}
+.home-release-link:hover { text-decoration: underline; }
+.home-release-notes {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-release-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.home-release-actions .btn-row { opacity: 0; transition: opacity .15s; }
+.home-release-card:hover .btn-row { opacity: 1; }
+.release-past { opacity: .5; }
+
+/* Home stat pills */
+.home-stats-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.home-stat-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 16px;
+  box-shadow: var(--shadow);
+}
+.home-stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.home-stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ── Pinned Messages ─────────────────────────────────────────────────── */
+.home-pinned-section {
+  margin-top: 0;
+}
+.home-pinned-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+}
+.home-pinned-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.home-pinned-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.home-pinned-messages { display: flex; flex-direction: column; gap: 10px; }
+.home-pinned-msg {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: 3px solid #f59e0b;
+  border-radius: 8px;
+  padding: 10px 14px;
+  position: relative;
+}
+.home-pinned-msg-content {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.home-pinned-msg-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.home-pinned-msg:hover .home-pinned-msg-actions { opacity: 1; }
+.home-pinned-empty {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 12px 0;
+}
+
 /* ── Dark / Neon Theme ───────────────────────────────────────────────── */
 [data-theme="dark"] {
   --bg:          #080810;
@@ -1328,3 +1754,12 @@ button svg, .btn-row svg, .btn-add svg, .tab-btn svg { pointer-events: none; }
   box-shadow: 0 1px 4px rgba(0,0,0,0.25);
 }
 .toggle-track.on .toggle-thumb { transform: translateX(18px); }
+
+/* ── Dark Mode: Home ─────────────────────────────────────────────────── */
+[data-theme="dark"] { --tab-home: #60a5fa; }
+[data-theme="dark"] .tab-btn.active.tab-home { box-shadow: 0 0 14px rgba(96,165,250,0.45); }
+[data-theme="dark"] .home-cal-left {
+  background: linear-gradient(160deg, #1e3a5f 0%, #1d4ed8 100%);
+}
+[data-theme="dark"] .cal-nav-btn:hover { background: var(--surface2); }
+[data-theme="dark"] .home-upcoming-card { border-color: var(--border); }

@@ -1057,6 +1057,8 @@ function bindEvents() {
     const editBtn    = e.target.closest('.btn-edit-release')
     const delBtn     = e.target.closest('.btn-del-release')
     const pinDelBtn  = e.target.closest('.btn-pinned-delete')
+    const linkBtn    = e.target.closest('.btn-release-link')
+    if (linkBtn?.dataset.url) window.api.openExternal(linkBtn.dataset.url)
     if (editBtn) {
       const card = editBtn.closest('.home-release-card')
       const r = releases.find(x => x.id === card?.dataset.id)
@@ -1204,6 +1206,7 @@ function renderHome() {
             ${r.retailPrice ? `<span class="home-release-price">Retail: $${parseFloat(r.retailPrice).toFixed(2)}</span>` : ''}
           </div>
           ${r.notes ? `<div class="home-release-notes">${esc(r.notes)}</div>` : ''}
+          ${r.link ? `<a class="home-release-link btn-release-link" data-url="${esc(r.link)}" title="${esc(r.link)}">🔗 Buy / Release Page</a>` : ''}
         </div>
         <div class="home-release-actions">
           <button class="btn-row btn-edit-release" title="Edit" style="pointer-events:auto">${EDIT_ICON}</button>
@@ -1252,6 +1255,7 @@ function openReleaseModal(release = null) {
   $('rl-date').value   = release?.date        || today()
   $('rl-image').value  = release?.imageUrl    || ''
   $('rl-retail').value = release?.retailPrice || ''
+  $('rl-link').value   = release?.link        || ''
   $('rl-notes').value  = release?.notes       || ''
   $('modal-release').style.display = 'flex'
   $('rl-name').focus()
@@ -1273,6 +1277,7 @@ async function saveRelease() {
     date,
     imageUrl:    $('rl-image').value.trim()  || null,
     retailPrice: $('rl-retail').value        || null,
+    link:        $('rl-link').value.trim()   || null,
     notes:       $('rl-notes').value.trim()  || null
   }
 

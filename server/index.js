@@ -38,11 +38,14 @@ async function initDB() {
       date        TEXT NOT NULL,
       image_url   TEXT,
       retail_price TEXT,
+      link        TEXT,
       notes       TEXT,
       created_at  TIMESTAMPTZ DEFAULT NOW(),
       updated_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `)
+  // Add link column to existing tables that predate it
+  await pool.query(`ALTER TABLE releases ADD COLUMN IF NOT EXISTS link TEXT`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pinned_messages (
       id         TEXT PRIMARY KEY,
@@ -200,6 +203,7 @@ app.get('/releases', async (req, res) => {
       date:        r.date,
       imageUrl:    r.image_url,
       retailPrice: r.retail_price,
+      link:        r.link,
       notes:       r.notes,
       createdAt:   r.created_at,
       updatedAt:   r.updated_at,
@@ -212,15 +216,15 @@ app.get('/releases', async (req, res) => {
 
 // POST /releases — admin only
 app.post('/releases', requireAdmin, async (req, res) => {
-  const { id, name, date, imageUrl, retailPrice, notes } = req.body
+  const { id, name, date, imageUrl, retailPrice, link, notes } = req.body
   if (!name || !date) return res.status(400).json({ error: 'name and date required' })
   const releaseId = id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   try {
     await pool.query(
-      'INSERT INTO releases (id, name, date, image_url, retail_price, notes) VALUES ($1,$2,$3,$4,$5,$6)',
-      [releaseId, name, date, imageUrl || null, retailPrice || null, notes || null]
+      'INSERT INTO releases (id, name, date, image_url, retail_price, link, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [releaseId, name, date, imageUrl || null, retailPrice || null, link || null, notes || null]
     )
-    res.json({ id: releaseId, name, date, imageUrl: imageUrl || null, retailPrice: retailPrice || null, notes: notes || null })
+    res.json({ id: releaseId, name, date, imageUrl: imageUrl || null, retailPrice: retailPrice || null, link: link || null, notes: notes || null })
   } catch (err) {
     console.error('POST /releases error:', err)
     res.status(500).json({ error: 'Database error' })
@@ -229,11 +233,11 @@ app.post('/releases', requireAdmin, async (req, res) => {
 
 // PUT /releases/:id — admin only
 app.put('/releases/:id', requireAdmin, async (req, res) => {
-  const { name, date, imageUrl, retailPrice, notes } = req.body
+  const { name, date, imageUrl, retailPrice, link, notes } = req.body
   try {
     await pool.query(
-      'UPDATE releases SET name=$1, date=$2, image_url=$3, retail_price=$4, notes=$5, updated_at=NOW() WHERE id=$6',
-      [name, date, imageUrl || null, retailPrice || null, notes || null, req.params.id]
+      'UPDATE releases SET name=$1, date=$2, image_url=$3, retail_price=$4, link=$5, notes=$6, updated_at=NOW() WHERE id=$7',
+      [name, date, imageUrl || null, retailPrice || null, link || null, notes || null, req.params.id]
     )
     res.json({ success: true })
   } catch (err) {

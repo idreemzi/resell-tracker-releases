@@ -1,6 +1,4 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
-// Force HTTP/1.1 — avoids Akamai HTTP/2 fingerprint detection on BB/Amazon
-app.commandLine.appendSwitch('disable-http2')
 const path   = require('path')
 const fs     = require('fs')
 const http   = require('http')
@@ -1095,7 +1093,7 @@ async function scrapeLocalProduct(monitor, url) {
     }
 
     win.webContents.once('did-fail-load', onFail)
-    win.webContents.once('did-finish-load', onLoad)
+    win.webContents.once('dom-ready', onLoad)
     win.loadURL(url)
   })
 

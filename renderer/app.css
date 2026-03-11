@@ -1891,3 +1891,46 @@ button svg, .btn-row svg, .btn-add svg, .tab-btn svg { pointer-events: none; }
   background: var(--teal);
   color: #000;
 }
+
+/* ── Monitor site picker ─────────────────────────────────────────────── */
+.mon-site-picker {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.mon-site-btn {
+  flex: 1;
+  min-width: 80px;
+  padding: 7px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+  white-space: nowrap;
+}
+.mon-site-btn.active {
+  border-color: var(--site-color, var(--accent, #6366f1));
+  color: var(--site-color, var(--accent, #6366f1));
+  background: var(--surface);
+}
+.form-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 0;
+  word-break: break-all;
+}
+
+/* ── Site badges on cards ────────────────────────────────────────────── */
+.monitor-site-walmart { background: rgba(0,113,220,.15); color: #0071dc; }
+.monitor-site-target  { background: rgba(204,0,0,.12);   color: #cc0000; }
+.monitor-site-amazon  { background: rgba(255,153,0,.15); color: #e07000; }
+.monitor-site-bestbuy { background: rgba(0,70,190,.15);  color: #0046be; }
+[data-theme="dark"] .monitor-site-walmart { color: #5baaff; background: rgba(91,170,255,.12); }
+[data-theme="dark"] .monitor-site-target  { color: #ff6b6b; background: rgba(255,107,107,.12); }
+[data-theme="dark"] .monitor-site-amazon  { color: #ffb347; background: rgba(255,179,71,.12); }
+[data-theme="dark"] .monitor-site-bestbuy { color: #6699ff; background: rgba(102,153,255,.12); }

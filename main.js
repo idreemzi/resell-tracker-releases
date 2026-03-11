@@ -956,6 +956,197 @@ ipcMain.handle('auth:login', async () => {
   return { success: true, user: { username: result.username, avatar: result.avatar } }
 })
 
+// ── Local Monitor Engine (Best Buy + Amazon — bypass bot detection via real Chromium) ──
+// Runs in-app, uses the user's real IP and browser fingerprint.
+// Server handles Shopify/Walmart/Target; this handles BB/Amazon.
+
+const localMonitorTimers  = new Map()  // monitorId → intervalId
+const localMonitorSeen    = new Map()  // monitorId → { available, price }
+const LOCAL_MONITOR_SITES = new Set(['bestbuy', 'amazon'])
+
+function startLocalMonitors(monitors) {
+  // Stop any existing timers first
+  for (const [id, timer] of localMonitorTimers) clearInterval(timer)
+  localMonitorTimers.clear()
+
+  for (const m of monitors) {
+    if (m.active && LOCAL_MONITOR_SITES.has(m.site_type)) {
+      scheduleLocalMonitor(m)
+    }
+  }
+}
+
+function scheduleLocalMonitor(monitor) {
+  const existing = localMonitorTimers.get(monitor.id)
+  if (existing) clearInterval(existing)
+  const ms = (monitor.interval_sec || 30) * 1000
+  runLocalMonitor(monitor).catch(() => {})
+  const timer = setInterval(() => runLocalMonitor(monitor).catch(() => {}), ms)
+  localMonitorTimers.set(monitor.id, timer)
+}
+
+function stopLocalMonitor(monitorId) {
+  const t = localMonitorTimers.get(monitorId)
+  if (t) { clearInterval(t); localMonitorTimers.delete(monitorId) }
+  localMonitorSeen.delete(monitorId)
+}
+
+const BB_EXTRACT = `(function(){
+  try {
+    const btn  = document.querySelector('[data-button-state]')?.getAttribute('data-button-state')
+          || document.querySelector('.add-to-cart-button')?.getAttribute('data-button-state')
+          || (document.querySelector('.btn-primary') && document.querySelector('.btn-primary').innerText.toLowerCase().includes('add to cart') ? 'ADD_TO_CART' : null)
+    const priceEl = document.querySelector('.priceView-customer-price span') || document.querySelector('[class*="priceView"] span')
+    const price = priceEl ? parseFloat(priceEl.innerText.replace(/[^0-9.]/g,'')) : null
+    const titleEl = document.querySelector('.sku-title h1') || document.querySelector('h1')
+    const soldOut = document.body.innerText.includes('Sold Out') || document.body.innerText.includes('Coming Soon')
+    const available = !soldOut && (btn === 'ADD_TO_CART' || !!document.querySelector('[class*="fulfillment-add-to-cart-button"]:not([disabled])') || document.body.innerText.includes('Add to Cart'))
+    return { available, price, title: titleEl ? titleEl.innerText.trim() : null, btn }
+  } catch(e) { return null }
+})()`
+
+const AMZN_EXTRACT = `(function(){
+  try {
+    const addBtn   = document.getElementById('add-to-cart-button')
+    const buyBtn   = document.getElementById('buy-now-button')
+    const oosEl    = document.getElementById('outOfStock')
+    const available = (!!addBtn || !!buyBtn) && !oosEl
+    const priceEl  = document.querySelector('.a-price .a-offscreen') || document.querySelector('#priceblock_ourprice') || document.querySelector('#priceblock_dealprice')
+    const price    = priceEl ? parseFloat(priceEl.innerText.replace(/[^0-9.]/g,'')) : null
+    const titleEl  = document.getElementById('productTitle')
+    return { available, price, title: titleEl ? titleEl.innerText.trim() : null }
+  } catch(e) { return null }
+})()`
+
+async function scrapeLocalProduct(url, siteType) {
+  return new Promise((resolve) => {
+    const win = new BrowserWindow({
+      show: false, width: 1280, height: 900,
+      webPreferences: { nodeIntegration: false, contextIsolation: true }
+    })
+    win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+
+    let done = false
+    const finish = (val) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      try { win.destroy() } catch {}
+      resolve(val)
+    }
+    const timer = setTimeout(() => finish(null), 25000)
+
+    win.webContents.on('did-fail-load', (e, code) => { if (code !== -3) finish(null) })
+    win.webContents.on('did-finish-load', async () => {
+      if (done) return
+      const extractFn = siteType === 'amazon' ? AMZN_EXTRACT : BB_EXTRACT
+      for (let i = 0; i < 15 && !done; i++) {
+        await new Promise(r => setTimeout(r, 1000))
+        try {
+          const result = await win.webContents.executeJavaScript(extractFn)
+          if (result && (result.title || result.available !== undefined)) {
+            finish(result)
+            return
+          }
+        } catch {}
+      }
+      finish(null)
+    })
+    win.loadURL(url)
+  })
+}
+
+async function runLocalMonitor(monitor) {
+  const url = (monitor.product_url || monitor.site_url || '').trim()
+  if (!url) return
+
+  const result = await scrapeLocalProduct(url, monitor.site_type)
+  if (!result) {
+    console.log(`[local-monitor] No result for ${monitor.name}`)
+    return
+  }
+
+  const prev = localMonitorSeen.get(monitor.id)
+  const curr = { available: !!result.available, price: result.price ?? null }
+
+  if (!prev) {
+    // First run — seed without pinging
+    localMonitorSeen.set(monitor.id, curr)
+    console.log(`[local-monitor] Seeded ${monitor.name} — available:${curr.available} price:${curr.price}`)
+    return
+  }
+
+  localMonitorSeen.set(monitor.id, curr)
+
+  // Restock
+  if (curr.available && !prev.available) {
+    console.log(`[local-monitor] RESTOCK: ${monitor.name}`)
+    await sendLocalDiscordPing(monitor, result, 'restock', {})
+  }
+
+  // Price drop
+  if (monitor.price_alert && curr.price && prev.price && curr.price < prev.price) {
+    const threshold = monitor.price_threshold ? parseFloat(monitor.price_threshold) : null
+    if (!threshold || curr.price <= threshold) {
+      console.log(`[local-monitor] PRICE DROP: ${monitor.name} $${prev.price} → $${curr.price}`)
+      await sendLocalDiscordPing(monitor, result, 'price_drop', { oldPrice: prev.price, newPrice: curr.price })
+    }
+  }
+}
+
+async function sendLocalDiscordPing(monitor, product, type, extra) {
+  const SITE_LABELS = { bestbuy: 'Best Buy', amazon: 'Amazon' }
+  const siteLabel = SITE_LABELS[monitor.site_type] || monitor.name
+  const url = (monitor.product_url || monitor.site_url || '').trim()
+  const color = type === 'price_drop' ? 0xff9500 : 0x00ff7f
+  let title, fields
+
+  if (type === 'price_drop') {
+    title = `💰 Price Drop: ${product.title || monitor.name}`
+    fields = [
+      { name: 'Was', value: `$${extra.oldPrice.toFixed(2)}`, inline: true },
+      { name: 'Now', value: `$${extra.newPrice.toFixed(2)}`, inline: true },
+      { name: 'Saved', value: `$${(extra.oldPrice - extra.newPrice).toFixed(2)}`, inline: true },
+      { name: 'Site', value: siteLabel, inline: false }
+    ]
+  } else {
+    const price = product.price != null ? `$${product.price.toFixed(2)}` : 'N/A'
+    title = `🔄 Back In Stock: ${product.title || monitor.name}`
+    fields = [
+      { name: 'Price', value: price, inline: true },
+      { name: 'Site', value: siteLabel, inline: true },
+      { name: 'Status', value: '✅ In Stock', inline: true }
+    ]
+  }
+
+  const payload = {
+    content: monitor.ping_role ? `<@&${monitor.ping_role}>` : undefined,
+    embeds: [{ title, url, color, fields, footer: { text: `Resell Tracker Monitor • ${monitor.name}` }, timestamp: new Date().toISOString() }]
+  }
+  if (!payload.content) delete payload.content
+
+  try {
+    await fetch(monitor.webhook_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000)
+    })
+  } catch (err) {
+    console.error('[local-monitor] Discord ping failed:', err.message)
+  }
+}
+
+// IPC — renderer tells main to (re)start local monitors after loading them
+ipcMain.handle('localMonitors:start', (_, monitors) => {
+  startLocalMonitors(monitors)
+  return true
+})
+ipcMain.handle('localMonitors:stop', (_, monitorId) => {
+  stopLocalMonitor(monitorId)
+  return true
+})
+
 ipcMain.handle('auth:logout', () => {
   clearAuth()
   return true

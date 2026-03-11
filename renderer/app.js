@@ -167,6 +167,9 @@ async function loadData() {
     try { monitors = await window.api.monitors.getAll() } catch { monitors = [] }
     $('tab-monitors').style.display = ''
     renderMonitors()
+    // Start local monitors (Best Buy / Amazon) in Electron main process
+    const localMonitors = monitors.filter(m => m.active && (m.site_type === 'bestbuy' || m.site_type === 'amazon'))
+    if (localMonitors.length) window.api.localMonitors.start(localMonitors).catch(() => {})
   }
   renderAll()
   autoRefreshPackages()
@@ -760,7 +763,14 @@ async function confirmDelete() {
   if (collection === 'sales')     { sales     = sales.filter(s => s.id !== id);     renderSales();     renderChart() }
   if (collection === 'inventory') { inventory = inventory.filter(i => i.id !== id); renderInventory() }
   if (collection === 'packages')  { packages  = packages.filter(p => p.id !== id);  renderPackages() }
-  if (collection === 'monitors')  { monitors  = monitors.filter(m => m.id !== id);  renderMonitors() }
+  if (collection === 'monitors')  {
+    const mon = monitors.find(m => m.id === id)
+    if (mon && (mon.site_type === 'bestbuy' || mon.site_type === 'amazon')) {
+      window.api.localMonitors.stop(id).catch(() => {})
+    }
+    monitors = monitors.filter(m => m.id !== id)
+    renderMonitors()
+  }
   closeDeleteModal()
 }
 
@@ -1159,6 +1169,11 @@ function bindEvents() {
         const idx = monitors.findIndex(m => m.id === id)
         if (idx !== -1) monitors[idx] = updated
         renderMonitors()
+        const isLocal = updated.site_type === 'bestbuy' || updated.site_type === 'amazon'
+        if (isLocal) {
+          if (updated.active) window.api.localMonitors.start([updated]).catch(() => {})
+          else window.api.localMonitors.stop(updated.id).catch(() => {})
+        }
       }
       return
     }

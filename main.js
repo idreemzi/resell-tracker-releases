@@ -962,6 +962,7 @@ ipcMain.handle('auth:login', async () => {
 
 const localMonitorTimers  = new Map()  // monitorId → intervalId
 const localMonitorSeen    = new Map()  // monitorId → { available, price }
+const localMonitorWindows = new Map()  // monitorId → persistent BrowserWindow
 const LOCAL_MONITOR_SITES = new Set(['bestbuy', 'amazon'])
 
 function startLocalMonitors(monitors) {
@@ -989,6 +990,26 @@ function stopLocalMonitor(monitorId) {
   const t = localMonitorTimers.get(monitorId)
   if (t) { clearInterval(t); localMonitorTimers.delete(monitorId) }
   localMonitorSeen.delete(monitorId)
+  const win = localMonitorWindows.get(monitorId)
+  if (win) { try { win.destroy() } catch {} localMonitorWindows.delete(monitorId) }
+}
+
+function getOrCreateMonitorWindow(monitor) {
+  if (localMonitorWindows.has(monitor.id)) {
+    const w = localMonitorWindows.get(monitor.id)
+    if (!w.isDestroyed()) return w
+  }
+  const { screen } = require('electron')
+  const { width } = screen.getPrimaryDisplay().workAreaSize
+  const win = new BrowserWindow({
+    show: true, width: 1280, height: 900,
+    x: width + 100, y: 0,  // position off-screen to the right
+    skipTaskbar: true, frame: false,
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  })
+  win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+  localMonitorWindows.set(monitor.id, win)
+  return win
 }
 
 const BB_EXTRACT = `(async function(){
@@ -1038,40 +1059,30 @@ const AMZN_EXTRACT = `(function(){
   } catch(e) { return null }
 })()`
 
-async function scrapeLocalProduct(url, siteType) {
+async function scrapeLocalProduct(monitor, url) {
+  const win = getOrCreateMonitorWindow(monitor)
+  const siteType = monitor.site_type
   return new Promise((resolve) => {
-    const win = new BrowserWindow({
-      show: false, width: 1280, height: 900,
-      webPreferences: { nodeIntegration: false, contextIsolation: true }
-    })
-    win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
-
     let done = false
-    const finish = (val) => {
-      if (done) return
-      done = true
-      clearTimeout(timer)
-      try { win.destroy() } catch {}
-      resolve(val)
-    }
-    const timer = setTimeout(() => finish(null), 25000)
+    const finish = (val) => { if (!done) { done = true; clearTimeout(timer); resolve(val) } }
+    const timer = setTimeout(() => finish(null), 30000)
 
-    win.webContents.on('did-fail-load', (e, code) => { if (code !== -3) finish(null) })
-    win.webContents.on('did-finish-load', async () => {
+    const onFail = (e, code) => { if (code !== -3) finish(null) }
+    const onLoad = async () => {
       if (done) return
       const extractFn = siteType === 'amazon' ? AMZN_EXTRACT : BB_EXTRACT
-      for (let i = 0; i < 15 && !done; i++) {
+      for (let i = 0; i < 20 && !done; i++) {
         await new Promise(r => setTimeout(r, 1000))
         try {
           const result = await win.webContents.executeJavaScript(extractFn)
-          if (result && result.available !== undefined) {
-            finish(result)
-            return
-          }
+          if (result && result.available !== undefined) { finish(result); return }
         } catch {}
       }
       finish(null)
-    })
+    }
+
+    win.webContents.once('did-fail-load', onFail)
+    win.webContents.once('did-finish-load', onLoad)
     win.loadURL(url)
   })
 }
@@ -1080,7 +1091,7 @@ async function runLocalMonitor(monitor) {
   const url = (monitor.product_url || monitor.site_url || '').trim()
   if (!url) return
 
-  const result = await scrapeLocalProduct(url, monitor.site_type)
+  const result = await scrapeLocalProduct(monitor, url)
   if (!result) {
     console.log(`[local-monitor] No result for ${monitor.name}`)
     return

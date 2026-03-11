@@ -1164,8 +1164,9 @@ async function fetchShopifyProducts(monitor) {
 }
 
 async function runShopifyMonitor(monitor) {
+  console.log(`[shopify-monitor] Running ${monitor.name} site_url=${monitor.site_url} product_url=${monitor.product_url}`)
   const fetched = await fetchShopifyProducts(monitor)
-  if (!fetched) return
+  if (!fetched) { console.log(`[shopify-monitor] fetch failed for ${monitor.name}`); return }
   const { products, baseUrl } = fetched
 
   const keywords = monitor.keywords
@@ -1276,6 +1277,7 @@ async function sendShopifyDiscordPing(monitor, product, baseUrl, type, variants 
 // ── BB / Amazon Local Monitor ────────────────────────────────────────────────
 
 async function runLocalMonitor(monitor) {
+  console.log(`[local-monitor] runLocalMonitor called: ${monitor.name} site_type=${monitor.site_type}`)
   if (monitor.site_type === 'shopify') return runShopifyMonitor(monitor)
   const url = (monitor.product_url || monitor.site_url || '').trim()
   if (!url) return

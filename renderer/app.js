@@ -1161,9 +1161,11 @@ function bindEvents() {
       const monitor = monitors.find(m => m.id === id)
       if (!monitor) return
       const updated = await window.api.monitors.update(id, {
-        name: monitor.name, siteUrl: monitor.site_url, keywords: monitor.keywords,
-        webhookUrl: monitor.webhook_url, pingRole: monitor.ping_role,
-        intervalSec: monitor.interval_sec, active: !isActive
+        name: monitor.name, siteUrl: monitor.site_url, productUrl: monitor.product_url,
+        keywords: monitor.keywords, webhookUrl: monitor.webhook_url, pingRole: monitor.ping_role,
+        intervalSec: monitor.interval_sec, active: !isActive,
+        siteType: monitor.site_type, priceAlert: monitor.price_alert,
+        priceThreshold: monitor.price_threshold, proxyUrl: monitor.proxy_url
       })
       if (!updated?.error) {
         const idx = monitors.findIndex(m => m.id === id)

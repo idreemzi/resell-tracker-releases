@@ -1061,41 +1061,73 @@ const AMZN_EXTRACT = `(function(){
 
 const localMonitorScraping = new Map()  // monitorId → Promise (prevents concurrent scrapes)
 
-async function scrapeLocalProduct(monitor, url) {
-  // If already scraping this monitor, skip
-  if (localMonitorScraping.has(monitor.id)) return null
+function extractSkuFromUrl(url) {
+  const m = url.match(/skuId=(\d+)/) || url.match(/\/(\d+)\.p/) || url.match(/\/(\d+)\?/)
+  return m ? m[1] : null
+}
 
-  const win = getOrCreateMonitorWindow(monitor)
-  const siteType = monitor.site_type
-
-  const p = new Promise((resolve) => {
-    let done = false
-    const finish = (val) => { if (!done) { done = true; clearTimeout(timer); resolve(val) } }
-    const timer = setTimeout(() => { console.log(`[local-monitor] timeout for ${monitor.name}`); finish(null) }, 30000)
-
-    const onFail = (e, code, desc) => {
-      console.log(`[local-monitor] load failed code=${code} desc=${desc} for ${monitor.name}`)
-      finish(null)
-    }
-    const onLoad = async () => {
-      if (done) return
-      const extractFn = siteType === 'amazon' ? AMZN_EXTRACT : BB_EXTRACT
-      for (let i = 0; i < 20 && !done; i++) {
-        await new Promise(r => setTimeout(r, 1000))
-        try {
-          const title = await win.webContents.executeJavaScript('document.title')
-          const result = await win.webContents.executeJavaScript(extractFn)
-          console.log(`[local-monitor] t=${i} title="${title}" result=${JSON.stringify(result)}`)
-          if (result && result.available !== undefined) { finish(result); return }
-        } catch (e) { console.log(`[local-monitor] extract error t=${i}: ${e.message}`); break }
+async function fetchBBAvailability(sku, ses) {
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'application/json',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://www.bestbuy.com/',
+    'Origin': 'https://www.bestbuy.com'
+  }
+  // Try priceBlocks API
+  try {
+    const res = await ses.fetch(`https://www.bestbuy.com/api/3.0/priceBlocks?skus=${sku}`, { headers })
+    if (res.ok) {
+      const data = await res.json()
+      const item = Array.isArray(data) ? data[0] : data
+      if (item?.sku) {
+        const state     = item.sku?.buttonState?.buttonState || item.sku?.addToCartButton?.buttonState || ''
+        const available = state === 'ADD_TO_CART' || state === 'PRE_ORDER'
+        const price     = item.sku?.customerPrice?.currentPrice ?? null
+        const title     = item.sku?.names?.title ?? null
+        console.log(`[local-monitor] BB API state=${state} price=${price} title=${title}`)
+        return { available, price, title }
       }
-      finish(null)
     }
+    console.log(`[local-monitor] BB API status=${res.status}`)
+  } catch (e) { console.log(`[local-monitor] BB API error: ${e.message}`) }
+  return null
+}
 
-    win.webContents.once('did-fail-load', onFail)
-    win.webContents.once('dom-ready', onLoad)
-    win.loadURL(url)
-  })
+async function scrapeLocalProduct(monitor, url) {
+  if (localMonitorScraping.has(monitor.id)) return null
+  const { session } = require('electron')
+  const ses = session.defaultSession
+
+  const p = (async () => {
+    if (monitor.site_type === 'bestbuy') {
+      const sku = extractSkuFromUrl(url)
+      if (!sku) { console.log(`[local-monitor] Could not extract SKU from: ${url}`); return null }
+      return fetchBBAvailability(sku, ses)
+    }
+    // Amazon — still use BrowserWindow
+    const win = getOrCreateMonitorWindow(monitor)
+    return new Promise((resolve) => {
+      let done = false
+      const finish = (val) => { if (!done) { done = true; clearTimeout(timer); resolve(val) } }
+      const timer = setTimeout(() => { console.log(`[local-monitor] timeout for ${monitor.name}`); finish(null) }, 30000)
+      const onFail = (e, code, desc) => { console.log(`[local-monitor] load failed code=${code} desc=${desc}`); finish(null) }
+      const onLoad = async () => {
+        if (done) return
+        for (let i = 0; i < 20 && !done; i++) {
+          await new Promise(r => setTimeout(r, 1000))
+          try {
+            const result = await win.webContents.executeJavaScript(AMZN_EXTRACT)
+            if (result && result.available !== undefined) { finish(result); return }
+          } catch (e) { break }
+        }
+        finish(null)
+      }
+      win.webContents.once('did-fail-load', onFail)
+      win.webContents.once('dom-ready', onLoad)
+      win.loadURL(url)
+    })
+  })()
 
   localMonitorScraping.set(monitor.id, p)
   try { return await p } finally { localMonitorScraping.delete(monitor.id) }

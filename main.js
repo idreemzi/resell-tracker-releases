@@ -1155,12 +1155,13 @@ async function fetchShopifyProducts(monitor) {
       let baseUrl = (monitor.site_url || '').trim().replace(/\/$/, '')
       if (!baseUrl.startsWith('http')) baseUrl = 'https://' + baseUrl
       const res = await fetch(`${baseUrl}/products.json?limit=250`, { headers, signal: AbortSignal.timeout(15000) })
+      console.log(`[shopify-monitor] ${baseUrl}/products.json status=${res.status}`)
       if (!res.ok) return null
       const data = await res.json()
       if (!Array.isArray(data.products)) return null
       return { products: data.products, baseUrl }
     }
-  } catch { return null }
+  } catch (e) { console.log(`[shopify-monitor] fetchShopifyProducts error: ${e.message}`); return null }
 }
 
 async function runShopifyMonitor(monitor) {

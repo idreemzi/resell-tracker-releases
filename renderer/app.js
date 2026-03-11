@@ -326,7 +326,7 @@ function buildPkgCard(p) {
         <div class="pkg-card-meta">
           <span class="pkg-carrier-badge">${esc(p.carrier || '?')}</span>
           <span class="pkg-tracking-num">${esc(p.trackingNumber)}</span>
-          ${p.expectedDelivery ? `<span style="font-size:11px;color:var(--text-dim)">Est. ${esc(p.expectedDelivery)}</span>` : ''}
+          ${p.expectedDelivery && p.status !== 'Delivered' ? `<span style="font-size:11px;font-weight:700;color:var(--accent);background:rgba(var(--accent-rgb,99,102,241),.1);padding:2px 7px;border-radius:10px">📦 Est. ${esc(p.expectedDelivery)}</span>` : ''}
         </div>
       </div>
       <div class="row-actions" style="flex-shrink:0">
@@ -374,8 +374,9 @@ async function refreshTrackingStatus(pkg) {
     const result = await window.api.fetchTrackingEvents(pkg.trackingNumber, pkg.carrier)
     if (result) {
       const updates = { lastFetchedAt: new Date().toISOString() }
-      if (result.status)         updates.status = result.status
-      if (result.events?.length) updates.events = result.events
+      if (result.status)            updates.status           = result.status
+      if (result.events?.length)    updates.events           = result.events
+      if (result.expectedDelivery)  updates.expectedDelivery = result.expectedDelivery
       const updated = await window.api.packages.update(pkg.id, updates)
       packages = packages.map(p => p.id === pkg.id ? updated : p)
       renderPackages()

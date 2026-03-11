@@ -267,6 +267,21 @@ async function scrapeUSPSDirect(trackingNumber) {
         if (t && !statusTexts.includes(t)) statusTexts.push(t)
       }
     }
+    // Extract expected delivery date
+    let expectedDelivery = null
+    const edPatterns = [
+      /Expected\s+Delivery\s+by[\s\S]{0,400}?(\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b[\s\S]{0,60}?\b\d{4}\b)/i,
+      /Expected\s+Delivery[\s\S]{0,400}?(\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,?\s+\d{4})?)/i,
+      /Delivery\s+by[\s\S]{0,200}?(\b(?:January|February|March|April|May|June|July|august|september|october|november|december)\s+\d{1,2}(?:,?\s+\d{4})?)/i,
+    ]
+    for (const pat of edPatterns) {
+      const m = html.match(pat)
+      if (m) {
+        expectedDelivery = m[1].replace(/\s+/g, ' ').trim()
+        break
+      }
+    }
+
     // Find the first one that classifies to a real status
     for (const t of statusTexts) {
       const s = classifyStatus(t)
@@ -274,7 +289,7 @@ async function scrapeUSPSDirect(trackingNumber) {
         const events = statusTexts
           .filter(txt => classifyStatus(txt) || /\d{1,2}\/\d{1,2}|\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(txt))
           .map(txt => ({ description: txt, location: '', timestamp: '' }))
-        return { status: s, events }
+        return { status: s, events, expectedDelivery }
       }
     }
     return null
@@ -350,10 +365,21 @@ async function scrapeTrackingPage(url, carrier) {
           // For USPS: use targeted element extraction to avoid picking up notification text
           if (carrier === 'USPS') {
             const targeted = await win.webContents.executeJavaScript(USPS_TARGETED_FN)
+
+            // Extract expected delivery from rendered DOM
+            const expectedDelivery = await win.webContents.executeJavaScript(`(function(){
+              var el = document.querySelector('.expected_delivery, [class*="expected"], [class*="delivery-date"], .tb-expected-delivery')
+              if (el) return el.innerText.replace(/\\s+/g,' ').trim()
+              // Fallback: scan all text for "Expected Delivery" pattern
+              var full = document.body ? document.body.innerText : ''
+              var m = full.match(/Expected Delivery[^\\n]{0,10}\\n?([^\\n]{5,60})/)
+              return m ? m[1].trim() : null
+            })()`)
+
             if (targeted) {
               const status = classifyStatus(targeted)
               if (status) {
-                finish({ status, events: [{ description: targeted, location: '', timestamp: '' }] })
+                finish({ status, events: [{ description: targeted, location: '', timestamp: '' }], expectedDelivery: expectedDelivery || null })
                 return
               }
             }
@@ -516,11 +542,8 @@ ipcMain.handle('tracking:fetchEvents', async (_, trackingNumber, carrier) => {
     } catch {}
   }
 
-  // USPS: try fast direct HTML fetch first (page is server-rendered)
-  if (carrier === 'USPS') {
-    const direct = await scrapeUSPSDirect(trackingNumber)
-    if (direct?.status) return direct
-  }
+  // USPS: use BrowserWindow scraper so we can intercept the API and get expected delivery
+  // (scrapeUSPSDirect only gets status from server-rendered HTML, not expected delivery)
 
   // BrowserWindow scraping path — fully renders carrier SPA pages
   const url = carrierTrackingUrl(trackingNumber, carrier)
@@ -530,7 +553,7 @@ ipcMain.handle('tracking:fetchEvents', async (_, trackingNumber, carrier) => {
     const events = raw.events || []
     let status = raw.status || null
     if (!status && events.length) status = classifyStatus(events[0].description)
-    return { status, events }
+    return { status, events, expectedDelivery: raw.expectedDelivery || null }
   })
 })
 

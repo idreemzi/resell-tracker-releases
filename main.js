@@ -30,6 +30,7 @@ async function createWindow() {
 
   mainWindow.setMenuBarVisibility(false)
   mainWindow.once('ready-to-show', () => mainWindow.show())
+  mainWindowRef = mainWindow
 
   const authed = await checkAuth()
   if (authed) {
@@ -956,14 +957,22 @@ ipcMain.handle('auth:login', async () => {
   return { success: true, user: { username: result.username, avatar: result.avatar } }
 })
 
-// ── Local Monitor Engine (Best Buy + Amazon — bypass bot detection via real Chromium) ──
-// Runs in-app, uses the user's real IP and browser fingerprint.
-// Server handles Shopify/Walmart/Target; this handles BB/Amazon.
+// ── Local Monitor Engine (Shopify + Best Buy + Amazon) ──────────────────────
+// All monitors run locally — no Railway latency, uses user's real IP.
 
 const localMonitorTimers  = new Map()  // monitorId → intervalId
-const localMonitorSeen    = new Map()  // monitorId → { available, price }
+const localMonitorSeen    = new Map()  // monitorId → { available, price } (BB/Amazon)
 const localMonitorWindows = new Map()  // monitorId → persistent BrowserWindow
-const LOCAL_MONITOR_SITES = new Set(['bestbuy', 'amazon'])
+const shopifyMonitorSeen  = new Map()  // monitorId → Map<productId, variantData>
+const LOCAL_MONITOR_SITES = new Set(['bestbuy', 'amazon', 'shopify'])
+
+let mainWindowRef = null  // set after mainWindow is created
+
+function notifyRenderer(channel, data) {
+  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+    mainWindowRef.webContents.send(channel, data)
+  }
+}
 
 function startLocalMonitors(monitors) {
   // Stop any existing timers first
@@ -990,6 +999,7 @@ function stopLocalMonitor(monitorId) {
   const t = localMonitorTimers.get(monitorId)
   if (t) { clearInterval(t); localMonitorTimers.delete(monitorId) }
   localMonitorSeen.delete(monitorId)
+  shopifyMonitorSeen.delete(monitorId)
   const win = localMonitorWindows.get(monitorId)
   if (win) { try { win.destroy() } catch {} localMonitorWindows.delete(monitorId) }
 }
@@ -1131,7 +1141,146 @@ async function scrapeLocalProduct(monitor, url) {
   try { return await p } finally { localMonitorScraping.delete(monitor.id) }
 }
 
+// ── Shopify Local Monitor ────────────────────────────────────────────────────
+
+async function fetchShopifyProducts(monitor) {
+  const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' }
+  try {
+    if (monitor.product_url) {
+      const pu = monitor.product_url.trim().replace(/\/$/, '')
+      const fetchUrl = pu.endsWith('.json') ? pu : `${pu}.json`
+      const res = await fetch(fetchUrl, { headers, signal: AbortSignal.timeout(15000) })
+      if (!res.ok) return null
+      const data = await res.json()
+      if (!data.product) return null
+      const parsed = new URL(fetchUrl)
+      return { products: [data.product], baseUrl: `${parsed.protocol}//${parsed.hostname}` }
+    } else {
+      let baseUrl = (monitor.site_url || '').trim().replace(/\/$/, '')
+      if (!baseUrl.startsWith('http')) baseUrl = 'https://' + baseUrl
+      const res = await fetch(`${baseUrl}/products.json?limit=250`, { headers, signal: AbortSignal.timeout(15000) })
+      if (!res.ok) return null
+      const data = await res.json()
+      if (!Array.isArray(data.products)) return null
+      return { products: data.products, baseUrl }
+    }
+  } catch { return null }
+}
+
+async function runShopifyMonitor(monitor) {
+  const fetched = await fetchShopifyProducts(monitor)
+  if (!fetched) return
+  const { products, baseUrl } = fetched
+
+  const keywords = monitor.keywords
+    ? monitor.keywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
+    : []
+
+  const isFirstRun = !shopifyMonitorSeen.has(monitor.id)
+  if (isFirstRun) shopifyMonitorSeen.set(monitor.id, new Map())
+  const seen = shopifyMonitorSeen.get(monitor.id)
+
+  for (const product of products) {
+    const productId = String(product.id)
+    if (!monitor.product_url && keywords.length > 0) {
+      if (!keywords.some(kw => (product.title || '').toLowerCase().includes(kw))) continue
+    }
+
+    const currentVariants = {}
+    for (const v of (product.variants || [])) {
+      currentVariants[String(v.id)] = { available: v.available, price: v.price || null }
+    }
+
+    if (isFirstRun) { seen.set(productId, currentVariants); continue }
+
+    if (!seen.has(productId)) {
+      seen.set(productId, currentVariants)
+      const availableVariants = (product.variants || []).filter(v => v.available).map(v => v.title)
+      if (availableVariants.length > 0) {
+        await sendShopifyDiscordPing(monitor, product, baseUrl, 'new', availableVariants)
+        notifyRenderer('monitor:alert', { type: 'new', monitorName: monitor.name, product: { title: product.title, handle: product.handle, image: product.images?.[0]?.src }, baseUrl, variants: availableVariants })
+      }
+      continue
+    }
+
+    const prevVariants = seen.get(productId)
+    const restockedVariants = []
+    let priceDropped = false, oldPrice = null, newPrice = null
+
+    for (const [varId, curr] of Object.entries(currentVariants)) {
+      const prev = prevVariants[varId] || {}
+      if (curr.available && !prev.available) {
+        const v = (product.variants || []).find(v => String(v.id) === varId)
+        if (v) restockedVariants.push(v.title)
+      }
+      if (monitor.price_alert && curr.price && prev.price) {
+        const cp = parseFloat(curr.price), pp = parseFloat(prev.price)
+        if (cp < pp) {
+          const threshold = monitor.price_threshold ? parseFloat(monitor.price_threshold) : null
+          if (!threshold || cp <= threshold) { priceDropped = true; oldPrice = pp; newPrice = cp }
+        }
+      }
+    }
+    seen.set(productId, currentVariants)
+
+    if (restockedVariants.length > 0) {
+      await sendShopifyDiscordPing(monitor, product, baseUrl, 'restock', restockedVariants)
+      notifyRenderer('monitor:alert', { type: 'restock', monitorName: monitor.name, product: { title: product.title, handle: product.handle, image: product.images?.[0]?.src }, baseUrl, variants: restockedVariants })
+    }
+    if (priceDropped) {
+      await sendShopifyDiscordPing(monitor, product, baseUrl, 'price_drop', [], { oldPrice, newPrice })
+    }
+  }
+
+  // Push live feed to renderer
+  notifyRenderer('shopify:feedUpdate', { monitorId: monitor.id, monitorName: monitor.name, products, baseUrl })
+}
+
+async function sendShopifyDiscordPing(monitor, product, baseUrl, type, variants = [], extra = {}) {
+  const productUrl = `${baseUrl}/products/${product.handle}`
+  const image = product.images?.[0]?.src || null
+  const firstVariant = (product.variants || []).find(v => v.available) || product.variants?.[0]
+  const currentPrice = firstVariant?.price ? `$${parseFloat(firstVariant.price).toFixed(2)}` : 'N/A'
+  let color, title, fields
+
+  if (type === 'price_drop') {
+    color = 0xff9500
+    title = `💰 Price Drop: ${product.title}`
+    fields = [
+      { name: 'Was', value: `$${extra.oldPrice.toFixed(2)}`, inline: true },
+      { name: 'Now', value: `$${extra.newPrice.toFixed(2)}`, inline: true },
+      { name: 'Saved', value: `$${(extra.oldPrice - extra.newPrice).toFixed(2)}`, inline: true },
+      { name: 'Site', value: monitor.name, inline: false }
+    ]
+  } else {
+    color = type === 'restock' ? 0x00ff7f : 0x5865f2
+    title = `${type === 'restock' ? '🔄 Restock' : '🆕 New Product'}: ${product.title}`
+    const variantText = variants.length > 0
+      ? variants.slice(0, 15).join(', ') + (variants.length > 15 ? ` +${variants.length - 15} more` : '')
+      : 'Available'
+    fields = [
+      { name: 'Price', value: currentPrice, inline: true },
+      { name: 'Site', value: monitor.name, inline: true },
+      { name: type === 'restock' ? 'Restocked Sizes' : 'Available Sizes', value: variantText, inline: false }
+    ]
+  }
+
+  const payload = {
+    content: monitor.ping_role ? `<@&${monitor.ping_role}>` : undefined,
+    embeds: [{ title, url: productUrl, color, fields, footer: { text: `Resell Tracker Monitor • ${monitor.name}` }, timestamp: new Date().toISOString() }]
+  }
+  if (image) payload.embeds[0].thumbnail = { url: image }
+  if (!payload.content) delete payload.content
+
+  try {
+    await fetch(monitor.webhook_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) })
+  } catch (err) { console.error('[shopify-monitor] Discord ping failed:', err.message) }
+}
+
+// ── BB / Amazon Local Monitor ────────────────────────────────────────────────
+
 async function runLocalMonitor(monitor) {
+  if (monitor.site_type === 'shopify') return runShopifyMonitor(monitor)
   const url = (monitor.product_url || monitor.site_url || '').trim()
   if (!url) return
 
@@ -1157,6 +1306,7 @@ async function runLocalMonitor(monitor) {
   if (curr.available && !prev.available) {
     console.log(`[local-monitor] RESTOCK: ${monitor.name}`)
     await sendLocalDiscordPing(monitor, result, 'restock', {})
+    notifyRenderer('monitor:alert', { type: 'restock', monitorName: monitor.name, product: { title: result.title || monitor.name }, variants: [] })
   }
 
   // Price drop

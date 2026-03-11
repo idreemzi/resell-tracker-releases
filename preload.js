@@ -41,5 +41,7 @@ contextBridge.exposeInMainWorld('api', {
     login:        ()  => ipcRenderer.invoke('auth:login'),
     logout:       ()  => ipcRenderer.invoke('auth:logout'),
     loadMain:     ()  => ipcRenderer.invoke('auth:loadMain'),
-  }
+  },
+  onMonitorAlert: cb => ipcRenderer.on('monitor:alert',      (_, d) => cb(d)),
+  onShopifyFeed:  cb => ipcRenderer.on('shopify:feedUpdate', (_, d) => cb(d)),
 })

@@ -8,6 +8,11 @@ let isAdmin        = false
 let monitors = []
 let monitorEditId = null
 const ADMIN_DISCORD_ID = '313100007551270912'
+const LOCAL_SITES = new Set(['bestbuy', 'amazon', 'shopify'])
+
+// Live Shopify feed state
+const shopifyFeeds = new Map()  // monitorId → { monitorName, products, baseUrl, updatedAt }
+let activeFeedMonitorId = null
 
 let chartYear = new Date().getFullYear()
 const chartVisible = { spent: true, revenue: true, profit: true }
@@ -105,6 +110,7 @@ function init() {
   initNavUser()
   initEbayDarkMode()
   initHome()
+  initMonitorPush()
 }
 
 async function initNavUser() {
@@ -168,7 +174,7 @@ async function loadData() {
     $('tab-monitors').style.display = ''
     renderMonitors()
     // Start local monitors (Best Buy / Amazon) in Electron main process
-    const localMonitors = monitors.filter(m => m.active && (m.site_type === 'bestbuy' || m.site_type === 'amazon'))
+    const localMonitors = monitors.filter(m => m.active && LOCAL_SITES.has(m.site_type))
     if (localMonitors.length) window.api.localMonitors.start(localMonitors).catch(() => {})
   }
   renderAll()
@@ -765,7 +771,7 @@ async function confirmDelete() {
   if (collection === 'packages')  { packages  = packages.filter(p => p.id !== id);  renderPackages() }
   if (collection === 'monitors')  {
     const mon = monitors.find(m => m.id === id)
-    if (mon && (mon.site_type === 'bestbuy' || mon.site_type === 'amazon')) {
+    if (mon && LOCAL_SITES.has(mon.site_type)) {
       window.api.localMonitors.stop(id).catch(() => {})
     }
     monitors = monitors.filter(m => m.id !== id)
@@ -853,8 +859,9 @@ function switchView(view) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
   $(`view-${view}`).classList.add('active')
   document.querySelector(`.tab-btn[data-view="${view}"]`)?.classList.add('active')
-  if (view === 'sales') renderChart()
-  if (view === 'home')  renderHome()
+  if (view === 'sales')    renderChart()
+  if (view === 'home')     renderHome()
+  if (view === 'monitors') renderShopifyFeed()
 }
 
 // ── Event Binding ─────────────────────────────────────────────────────────────
@@ -1139,8 +1146,7 @@ function bindEvents() {
       if (!updated?.error) {
         const idx = monitors.findIndex(m => m.id === monitorEditId)
         if (idx !== -1) monitors[idx] = updated
-        const isLocal = updated.site_type === 'bestbuy' || updated.site_type === 'amazon'
-        if (isLocal) {
+        if (LOCAL_SITES.has(updated.site_type)) {
           window.api.localMonitors.stop(updated.id).catch(() => {})
           if (updated.active) window.api.localMonitors.start([updated]).catch(() => {})
         }
@@ -1149,8 +1155,7 @@ function bindEvents() {
       const created = await window.api.monitors.add(payload)
       if (!created?.error) {
         monitors.unshift(created)
-        const isLocal = created.site_type === 'bestbuy' || created.site_type === 'amazon'
-        if (isLocal && created.active) window.api.localMonitors.start([created]).catch(() => {})
+        if (LOCAL_SITES.has(created.site_type) && created.active) window.api.localMonitors.start([created]).catch(() => {})
       }
     }
 
@@ -1180,8 +1185,7 @@ function bindEvents() {
         const idx = monitors.findIndex(m => m.id === id)
         if (idx !== -1) monitors[idx] = updated
         renderMonitors()
-        const isLocal = updated.site_type === 'bestbuy' || updated.site_type === 'amazon'
-        if (isLocal) {
+        if (LOCAL_SITES.has(updated.site_type)) {
           if (updated.active) window.api.localMonitors.start([updated]).catch(() => {})
           else window.api.localMonitors.stop(updated.id).catch(() => {})
         }
@@ -1243,6 +1247,14 @@ function bindEvents() {
   })
 
   window.addEventListener('resize', renderChart)
+
+  // Feed tab switching
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('.feed-tab-btn')
+    if (btn?.dataset.feedId) { activeFeedMonitorId = btn.dataset.feedId; renderShopifyFeed() }
+    const card = e.target.closest('.feed-product-card')
+    if (card?.dataset.url) window.api.openExternal(card.dataset.url)
+  })
 }
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
@@ -1594,6 +1606,77 @@ function renderMonitors() {
       </div>
     </div>`
   }).join('')
+}
+
+// ── Shopify Live Feed ─────────────────────────────────────────────────────────
+
+function renderShopifyFeed() {
+  const section = $('shopify-feed-section')
+  const shopifyOnly = [...shopifyFeeds.entries()].filter(([, f]) => f.products?.length > 0)
+  if (shopifyOnly.length === 0) { section.style.display = 'none'; return }
+  section.style.display = ''
+
+  if (!activeFeedMonitorId || !shopifyFeeds.has(activeFeedMonitorId)) {
+    activeFeedMonitorId = shopifyOnly[0][0]
+  }
+
+  $('shopify-feed-tabs').innerHTML = shopifyOnly.map(([id, f]) =>
+    `<button class="feed-tab-btn ${id === activeFeedMonitorId ? 'active' : ''}" data-feed-id="${esc(id)}">${esc(f.monitorName)}</button>`
+  ).join('')
+
+  const feed = shopifyFeeds.get(activeFeedMonitorId)
+  if (!feed) return
+  const ago = feed.updatedAt ? Math.round((Date.now() - feed.updatedAt) / 1000) : null
+  $('feed-updated').textContent = ago !== null ? `Updated ${ago < 5 ? 'just now' : ago + 's ago'}` : ''
+
+  $('shopify-feed-grid').innerHTML = (feed.products || []).map(p => {
+    const image = p.images?.[0]?.src || ''
+    const price = p.variants?.[0]?.price ? `$${parseFloat(p.variants[0].price).toFixed(2)}` : ''
+    const variantBtns = (p.variants || []).map(v =>
+      `<span class="feed-variant-btn ${v.available ? 'variant-instock' : 'variant-oos'}">${esc(v.title)}</span>`
+    ).join('')
+    const productUrl = `${feed.baseUrl}/products/${p.handle}`
+    return `<div class="feed-product-card" data-url="${esc(productUrl)}">
+      ${image ? `<img class="feed-product-img" src="${esc(image)}" loading="lazy" />` : '<div class="feed-product-img feed-img-placeholder"></div>'}
+      <div class="feed-product-info">
+        <span class="feed-product-title">${esc(p.title)}</span>
+        ${price ? `<span class="feed-product-price">${esc(price)}</span>` : ''}
+      </div>
+      <div class="feed-variants">${variantBtns}</div>
+    </div>`
+  }).join('')
+}
+
+// ── Toast Notifications ───────────────────────────────────────────────────────
+
+function showMonitorToast({ type, monitorName, product, variants }) {
+  const container = $('toast-container')
+  const toast = document.createElement('div')
+  toast.className = `monitor-toast monitor-toast-${type === 'restock' ? 'restock' : 'new'}`
+  const icon  = type === 'restock' ? '🔄' : '🆕'
+  const label = type === 'restock' ? 'Restock' : 'New Drop'
+  const variantText = (variants || []).slice(0, 5).join(', ')
+  toast.innerHTML = `
+    <div class="toast-icon">${icon}</div>
+    <div class="toast-body">
+      <div class="toast-label">${esc(label)} · ${esc(monitorName || '')}</div>
+      <div class="toast-title">${esc(product?.title || 'Unknown')}</div>
+      ${variantText ? `<div class="toast-sizes">${esc(variantText)}</div>` : ''}
+    </div>
+    <button class="toast-close">✕</button>`
+  toast.querySelector('.toast-close').addEventListener('click', () => toast.remove())
+  container.appendChild(toast)
+  setTimeout(() => { toast.classList.add('toast-exit'); setTimeout(() => toast.remove(), 400) }, 8000)
+}
+
+// Register push channels from main process (called once at init)
+function initMonitorPush() {
+  if (!window.api.onMonitorAlert) return
+  window.api.onMonitorAlert(data => showMonitorToast(data))
+  window.api.onShopifyFeed(data => {
+    shopifyFeeds.set(data.monitorId, { monitorName: data.monitorName, products: data.products, baseUrl: data.baseUrl, updatedAt: Date.now() })
+    if (document.getElementById('view-monitors')?.classList.contains('active')) renderShopifyFeed()
+  })
 }
 
 function timeAgo(isoString) {

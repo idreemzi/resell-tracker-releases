@@ -1934,3 +1934,40 @@ button svg, .btn-row svg, .btn-add svg, .tab-btn svg { pointer-events: none; }
 [data-theme="dark"] .monitor-site-target  { color: #ff6b6b; background: rgba(255,107,107,.12); }
 [data-theme="dark"] .monitor-site-amazon  { color: #ffb347; background: rgba(255,179,71,.12); }
 [data-theme="dark"] .monitor-site-bestbuy { color: #6699ff; background: rgba(102,153,255,.12); }
+
+/* ── Shopify Live Feed ───────────────────────────────────────────────────── */
+.section-subheader { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.section-subheader-title { font-size:15px; font-weight:700; }
+
+.feed-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+.feed-tab-btn { padding:5px 14px; border-radius:20px; border:1px solid var(--border); background:var(--surface); font-size:12px; cursor:pointer; transition:all .15s; color:var(--text); }
+.feed-tab-btn.active { background:var(--tab-monitors); color:#fff; border-color:var(--tab-monitors); }
+
+.shopify-feed-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; }
+
+.feed-product-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; cursor:pointer; transition:border-color .15s; }
+.feed-product-card:hover { border-color:var(--tab-monitors); }
+.feed-product-img { width:100%; aspect-ratio:1; object-fit:cover; display:block; }
+.feed-img-placeholder { width:100%; aspect-ratio:1; background:var(--surface2,#eee); }
+.feed-product-info { padding:8px 10px 4px; }
+.feed-product-title { font-size:12px; font-weight:600; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.feed-product-price { font-size:12px; color:var(--green,#22c55e); display:block; margin-top:2px; }
+.feed-variants { padding:4px 8px 8px; display:flex; flex-wrap:wrap; gap:4px; }
+.feed-variant-btn { font-size:10px; padding:2px 6px; border-radius:4px; white-space:nowrap; pointer-events:none; }
+.variant-instock { background:rgba(37,99,235,.12); color:#3b82f6; border:1px solid rgba(37,99,235,.3); }
+.variant-oos { background:var(--surface2,#eee); color:var(--text-dim,#999); border:1px solid var(--border); }
+
+/* ── Monitor Toast Notifications ────────────────────────────────────────── */
+.toast-container { position:fixed; bottom:24px; right:20px; display:flex; flex-direction:column-reverse; gap:8px; z-index:9999; pointer-events:none; }
+.monitor-toast { display:flex; align-items:flex-start; gap:10px; min-width:260px; max-width:340px; padding:12px 14px; border-radius:10px; background:var(--surface); border:1px solid var(--border); box-shadow:0 4px 20px rgba(0,0,0,.2); pointer-events:all; animation:toastIn .25s ease; }
+.monitor-toast-restock { border-left:3px solid #22c55e; }
+.monitor-toast-new     { border-left:3px solid #5865f2; }
+.toast-icon { font-size:18px; line-height:1.4; flex-shrink:0; }
+.toast-body { flex:1; min-width:0; }
+.toast-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:var(--text-dim); margin-bottom:2px; }
+.toast-title { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.toast-sizes { font-size:11px; color:var(--text-dim); margin-top:2px; }
+.toast-close { background:none; border:none; color:var(--text-dim); cursor:pointer; padding:0 2px; font-size:13px; flex-shrink:0; line-height:1; }
+.toast-exit { animation:toastOut .35s ease forwards; }
+@keyframes toastIn  { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+@keyframes toastOut { from { opacity:1; transform:translateX(0); } to { opacity:0; transform:translateX(30px); } }

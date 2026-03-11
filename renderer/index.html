@@ -296,6 +296,15 @@
       <div id="monitors-empty" class="empty-state" style="display:none">
         <p>No monitors yet. Add a Shopify site to start monitoring restocks and new products!</p>
       </div>
+      <!-- Live Shopify product feed -->
+      <div id="shopify-feed-section" style="display:none">
+        <div class="section-subheader" style="margin-top:28px">
+          <span class="section-subheader-title">Live Product Feed</span>
+          <span class="page-count" id="feed-updated"></span>
+        </div>
+        <div id="shopify-feed-tabs" class="feed-tabs"></div>
+        <div id="shopify-feed-grid" class="shopify-feed-grid"></div>
+      </div>
     </div>
 
     <div id="view-market" class="view">
@@ -679,6 +688,7 @@
   <img id="lightbox-img" src="" alt="" />
 </div>
 
+<div id="toast-container" class="toast-container"></div>
 <script src="app.js"></script>
 </body>
 </html>

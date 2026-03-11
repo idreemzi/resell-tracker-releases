@@ -1077,8 +1077,12 @@ async function scrapeLocalProduct(monitor, url) {
         await new Promise(r => setTimeout(r, 1000))
         try {
           const result = await win.webContents.executeJavaScript(extractFn)
+          if (i === 0 || i === 4) {
+            const title = await win.webContents.executeJavaScript('document.title')
+            console.log(`[local-monitor] debug t=${i} title="${title}" result=${JSON.stringify(result)}`)
+          }
           if (result && result.available !== undefined) { finish(result); return }
-        } catch {}
+        } catch (e) { if (i === 0) console.log(`[local-monitor] extract error: ${e.message}`) }
       }
       finish(null)
     }

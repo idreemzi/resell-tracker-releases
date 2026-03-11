@@ -975,13 +975,9 @@ function notifyRenderer(channel, data) {
 }
 
 function startLocalMonitors(monitors) {
-  // Stop any existing timers first
-  for (const [id, timer] of localMonitorTimers) clearInterval(timer)
-  localMonitorTimers.clear()
-
   for (const m of monitors) {
     if (m.active && LOCAL_MONITOR_SITES.has(m.site_type)) {
-      scheduleLocalMonitor(m)
+      scheduleLocalMonitor(m)  // scheduleLocalMonitor handles replacing existing timer for same id
     }
   }
 }

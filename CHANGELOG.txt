@@ -1,6 +1,44 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
+v1.8.0 — 2026-03-11
+--------------------
+ADDED
+  - Pinned Messages — admin can pin announcements visible to all users on
+    the Home tab (e.g. drop reminders, watch-out notices).
+  - Release time field — admin sets a drop time in their local timezone;
+    all users see it auto-converted to their own local time with timezone
+    abbreviation (e.g. 10:00 AM EST / 3:00 PM GMT).
+  - Product link field on releases — attach a buy/release page URL that
+    opens in the system browser directly from the release card.
+
+CHANGED
+  - Home calendar redesigned to match a cleaner reference layout: large
+    left accent panel with big day number, centered month title with year
+    top-right, nav arrows flanking the grid, bigger cells (42px rows).
+  - Stats row (This Month Profit, Inventory Items, In Transit) removed
+    from Home — cleaner layout.
+  - Pinned Messages section is now aligned to the calendar width.
+  - Right releases panel widened for better card display.
+
+FIXED
+  - Crash on save release after stats row was removed from Home
+    (null textContent error on missing DOM elements).
+  - Release date circles (orange/today, blue/release) now properly
+    centered within their grid columns.
+
+v1.7.0 — 2026-03-10
+--------------------
+ADDED
+  - Home tab — new default landing page with a full release calendar.
+  - Shared release calendar — admin pushes upcoming releases (toys, sneakers,
+    collectibles, etc.) that all users see instantly on their Home tab.
+  - Calendar highlights: orange = today, blue = release dates.
+  - Release cards show product image, name, date, retail price, and notes.
+  - Stats row on Home: this month's profit, inventory count, packages in transit.
+  - Releases stored in a shared PostgreSQL database on Railway — data persists
+    forever and is the same for every user.
+
 v1.6.1 — 2026-03-10
 --------------------
 ADDED

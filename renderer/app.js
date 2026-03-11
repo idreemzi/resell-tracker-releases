@@ -1219,18 +1219,6 @@ function renderHome() {
     }).join('')
   }
 
-  // Stats
-  const monthProfit = sales
-    .filter(s => { const d = s.date || ''; const [y, m] = d.split('-'); return +y === ty && +m - 1 === tm })
-    .reduce((a, s) => a + (calcSaleProfit(s) || 0), 0)
-  const pd = profitDisplay(monthProfit)
-  $('home-stat-profit').textContent = pd.text
-  $('home-stat-profit').className   = `home-stat-value ${pd.cls}`
-  $('home-stat-inv').textContent    = inventory.length
-  $('home-stat-transit').textContent = packages.filter(p =>
-    ['In Transit', 'Out for Delivery', 'Awaiting Pickup'].includes(p.status)
-  ).length
-
   renderPinnedMessages()
 }
 

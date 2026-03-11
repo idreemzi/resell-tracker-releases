@@ -2,6 +2,10 @@
 let sales     = []
 let inventory = []
 let packages  = []
+let releases       = []
+let pinnedMessages = []
+let isAdmin        = false
+const ADMIN_DISCORD_ID = '313100007551270912'
 
 let chartYear = new Date().getFullYear()
 const chartVisible = { spent: true, revenue: true, profit: true }
@@ -97,15 +101,22 @@ function init() {
   $('dark-mode-track').classList.toggle('on', dark)
   initStatusBar()
   initNavUser()
+  initEbayDarkMode()
+  initHome()
 }
 
 async function initNavUser() {
   const result = await window.api.auth.check()
   if (!result?.user) return
-  const { username, avatar } = result.user
+  const { userId, username, avatar } = result.user
 
-  $('nav-user-name').textContent = username
+  $('nav-user-name').textContent    = username
   $('nav-user-tooltip').textContent = '@' + username
+
+  // Show admin-only buttons
+  isAdmin = userId === ADMIN_DISCORD_ID
+  $('btn-add-release').style.display = isAdmin ? '' : 'none'
+  $('btn-add-pinned').style.display  = isAdmin ? '' : 'none'
 
   if (avatar) {
     const img = document.createElement('img')
@@ -134,14 +145,18 @@ function initStatusBar() {
 
 async function loadData() {
   try {
-    const [s, i, p] = await Promise.all([
+    const [s, i, p, r, pm] = await Promise.all([
       window.api.sales.getAll(),
       window.api.inventory.getAll(),
-      window.api.packages.getAll()
+      window.api.packages.getAll(),
+      window.api.releases.getAll(),
+      window.api.pinned.getAll()
     ])
-    sales     = Array.isArray(s) ? s : []
-    inventory = Array.isArray(i) ? i : []
-    packages  = Array.isArray(p) ? p : []
+    sales          = Array.isArray(s)  ? s  : []
+    inventory      = Array.isArray(i)  ? i  : []
+    packages       = Array.isArray(p)  ? p  : []
+    releases       = Array.isArray(r)  ? r  : []
+    pinnedMessages = Array.isArray(pm) ? pm : []
   } catch (err) {
     console.error('Failed to load data:', err)
     sales = []; inventory = []; packages = []
@@ -155,6 +170,7 @@ function renderAll() {
   renderInventory()
   renderPackages()
   renderChart()
+  renderHome()
 }
 
 // ── Sales ─────────────────────────────────────────────────────────────────────
@@ -820,6 +836,7 @@ function switchView(view) {
   $(`view-${view}`).classList.add('active')
   document.querySelector(`.tab-btn[data-view="${view}"]`)?.classList.add('active')
   if (view === 'sales') renderChart()
+  if (view === 'home')  renderHome()
 }
 
 // ── Event Binding ─────────────────────────────────────────────────────────────
@@ -1008,15 +1025,50 @@ function bindEvents() {
   // Keyboard
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if ($('lightbox').style.display !== 'none')       { $('lightbox').style.display = 'none'; return }
-      if ($('modal-sold').style.display !== 'none')     { closeMarkAsSoldModal(); return }
-      if ($('modal-settings').style.display !== 'none') { closeSettingsModal(); return }
+      if ($('lightbox').style.display !== 'none')        { $('lightbox').style.display = 'none'; return }
+      if ($('modal-sold').style.display !== 'none')      { closeMarkAsSoldModal(); return }
+      if ($('modal-settings').style.display !== 'none')  { closeSettingsModal(); return }
+      if ($('modal-release').style.display !== 'none')   { closeReleaseModal(); return }
       closeSaleModal(); closeInvModal(); closePkgModal(); closeDeleteModal()
     }
     if (e.key === 'Enter' && e.ctrlKey) {
-      if ($('modal-sale').style.display !== 'none') saveSale()
-      if ($('modal-inv').style.display  !== 'none') saveInv()
-      if ($('modal-pkg').style.display  !== 'none') savePkg()
+      if ($('modal-sale').style.display    !== 'none') saveSale()
+      if ($('modal-inv').style.display     !== 'none') saveInv()
+      if ($('modal-pkg').style.display     !== 'none') savePkg()
+      if ($('modal-release').style.display !== 'none') saveRelease()
+      if ($('modal-pinned').style.display  !== 'none') savePinnedMessage()
+    }
+  })
+
+  // Release modal
+  $('btn-add-release').addEventListener('click', () => openReleaseModal())
+  $('modal-release-close').addEventListener('click', closeReleaseModal)
+  $('btn-release-save').addEventListener('click', saveRelease)
+  $('modal-release').addEventListener('click', e => { if (e.target.id === 'modal-release') closeReleaseModal() })
+
+  // Pinned modal
+  $('btn-add-pinned').addEventListener('click', openPinnedModal)
+  $('modal-pinned-close').addEventListener('click', closePinnedModal)
+  $('btn-pinned-save').addEventListener('click', savePinnedMessage)
+  $('modal-pinned').addEventListener('click', e => { if (e.target.id === 'modal-pinned') closePinnedModal() })
+
+  // Delegated: release edit / delete + pinned delete
+  document.addEventListener('click', e => {
+    const editBtn    = e.target.closest('.btn-edit-release')
+    const delBtn     = e.target.closest('.btn-del-release')
+    const pinDelBtn  = e.target.closest('.btn-pinned-delete')
+    if (editBtn) {
+      const card = editBtn.closest('.home-release-card')
+      const r = releases.find(x => x.id === card?.dataset.id)
+      if (r) openReleaseModal(r)
+    }
+    if (delBtn) {
+      const card = delBtn.closest('.home-release-card')
+      if (card?.dataset.id) deleteRelease(card.dataset.id)
+    }
+    if (pinDelBtn) {
+      const id = pinDelBtn.dataset.id
+      if (id) deletePinnedMessage(id)
     }
   })
 
@@ -1064,7 +1116,273 @@ function saveSettings() {
   closeSettingsModal()
 }
 
+// ── Home / Calendar ───────────────────────────────────────────────────────────
+let calMonth = new Date().getMonth()
+let calYear  = new Date().getFullYear()
+
+const MONTH_NAMES = ['January','February','March','April','May','June',
+  'July','August','September','October','November','December']
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+
+function ordinal(d) {
+  if (d > 3 && d < 21) return 'th'
+  switch (d % 10) { case 1: return 'st'; case 2: return 'nd'; case 3: return 'rd'; default: return 'th' }
+}
+
+function renderHome() {
+  const now = new Date()
+  const td = now.getDate(), tm = now.getMonth(), ty = now.getFullYear()
+  const todayStr = now.toISOString().slice(0, 10)
+
+  // Left panel — always shows today
+  $('home-big-day').textContent       = td
+  $('home-day-name').textContent      = DAY_NAMES[now.getDay()]
+  $('home-cal-monthyear').textContent = MONTH_NAMES[tm] + ' ' + ty
+
+  // Calendar header
+  $('home-cal-title').textContent = MONTH_NAMES[calMonth]
+  $('home-cal-year').textContent  = calYear
+
+  // Collect release dates
+  const releaseDates = new Set(releases.map(r => r.date).filter(Boolean))
+
+  // Build grid
+  const firstDow    = new Date(calYear, calMonth, 1).getDay()
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
+  const daysInPrev  = new Date(calYear, calMonth, 0).getDate()
+  const totalCells  = Math.ceil((firstDow + daysInMonth) / 7) * 7
+
+  let html = '', day = 1, nextDay = 1
+  for (let i = 0; i < totalCells; i++) {
+    if (i < firstDow) {
+      html += `<div class="cal-day cal-day-other">${daysInPrev - firstDow + 1 + i}</div>`
+    } else if (day <= daysInMonth) {
+      const dateStr   = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+      const isToday   = day === td && calMonth === tm && calYear === ty
+      const isRelease = releaseDates.has(dateStr)
+      let cls = 'cal-day'
+      if (isToday && isRelease) cls += ' cal-day-today cal-day-release'
+      else if (isToday)         cls += ' cal-day-today'
+      else if (isRelease)       cls += ' cal-day-release'
+      html += `<div class="${cls}">${day}</div>`
+      day++
+    } else {
+      html += `<div class="cal-day cal-day-other">${nextDay++}</div>`
+    }
+  }
+  $('home-cal-grid').innerHTML = html
+
+  // Today heading
+  $('home-today-title').textContent = `${MONTH_NAMES[tm]} ${td}${ordinal(td)}, ${ty}`
+
+  // Upcoming releases (sorted by date, past releases shown at the bottom)
+  const sorted = [...releases].sort((a, b) => (a.date || '') < (b.date || '') ? -1 : 1)
+
+  $('home-release-count').textContent = releases.length ? `${releases.length} Release${releases.length > 1 ? 's' : ''}` : ''
+
+  const list = $('home-releases-list')
+  if (!sorted.length) {
+    list.innerHTML = '<div class="home-upcoming-empty">No releases yet — add one above</div>'
+  } else {
+    list.innerHTML = sorted.map(r => {
+      const isToday = r.date === todayStr
+      const isPast  = r.date && r.date < todayStr
+      const dateObj = r.date ? new Date(r.date + 'T12:00:00') : null
+      const dateLabel = isToday ? 'Today' :
+        dateObj ? dateObj.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+
+      const imgHtml = r.imageUrl
+        ? `<img class="home-release-img" src="${esc(r.imageUrl)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="home-release-img-placeholder" style="display:none">👟</div>`
+        : `<div class="home-release-img-placeholder">👟</div>`
+
+      return `<div class="home-release-card${isPast ? ' release-past' : ''}" data-id="${esc(r.id)}">
+        ${imgHtml}
+        <div class="home-release-info">
+          <div class="home-release-name">${esc(r.name)}</div>
+          <div class="home-release-meta">
+            <span class="home-release-date${isToday ? ' today' : ''}">${dateLabel}</span>
+            ${r.retailPrice ? `<span class="home-release-price">Retail: $${parseFloat(r.retailPrice).toFixed(2)}</span>` : ''}
+          </div>
+          ${r.notes ? `<div class="home-release-notes">${esc(r.notes)}</div>` : ''}
+        </div>
+        <div class="home-release-actions">
+          <button class="btn-row btn-edit-release" title="Edit" style="pointer-events:auto">${EDIT_ICON}</button>
+          <button class="btn-row danger btn-del-release" title="Delete" style="pointer-events:auto">${DEL_ICON}</button>
+        </div>
+      </div>`
+    }).join('')
+  }
+
+  // Stats
+  const monthProfit = sales
+    .filter(s => { const d = s.date || ''; const [y, m] = d.split('-'); return +y === ty && +m - 1 === tm })
+    .reduce((a, s) => a + (calcSaleProfit(s) || 0), 0)
+  const pd = profitDisplay(monthProfit)
+  $('home-stat-profit').textContent = pd.text
+  $('home-stat-profit').className   = `home-stat-value ${pd.cls}`
+  $('home-stat-inv').textContent    = inventory.length
+  $('home-stat-transit').textContent = packages.filter(p =>
+    ['In Transit', 'Out for Delivery', 'Awaiting Pickup'].includes(p.status)
+  ).length
+
+  renderPinnedMessages()
+}
+
+function initHome() {
+  $('cal-prev').addEventListener('click', () => {
+    calMonth--
+    if (calMonth < 0) { calMonth = 11; calYear-- }
+    renderHome()
+  })
+  $('cal-next').addEventListener('click', () => {
+    calMonth++
+    if (calMonth > 11) { calMonth = 0; calYear++ }
+    renderHome()
+  })
+}
+
+// ── Release CRUD ──────────────────────────────────────────────────────────────
+let releaseEditId = null
+
+function openReleaseModal(release = null) {
+  releaseEditId = release ? release.id : null
+  $('modal-release-title').textContent = release ? 'Edit Release' : 'Add Release'
+  $('btn-release-save').textContent    = release ? 'Save'         : 'Add'
+  $('rl-name').value   = release?.name        || ''
+  $('rl-date').value   = release?.date        || today()
+  $('rl-image').value  = release?.imageUrl    || ''
+  $('rl-retail').value = release?.retailPrice || ''
+  $('rl-notes').value  = release?.notes       || ''
+  $('modal-release').style.display = 'flex'
+  $('rl-name').focus()
+}
+
+function closeReleaseModal() {
+  $('modal-release').style.display = 'none'
+  releaseEditId = null
+}
+
+async function saveRelease() {
+  try {
+  const name = $('rl-name').value.trim()
+  const date = $('rl-date').value.trim()
+  if (!name || !date) return
+
+  const payload = {
+    name,
+    date,
+    imageUrl:    $('rl-image').value.trim()  || null,
+    retailPrice: $('rl-retail').value        || null,
+    notes:       $('rl-notes').value.trim()  || null
+  }
+
+  if (releaseEditId) {
+    const updated = await window.api.releases.update(releaseEditId, payload)
+    if (updated?.error) { alert('Server error: ' + updated.error); return }
+    const idx = releases.findIndex(r => r.id === releaseEditId)
+    if (idx !== -1) releases[idx] = { ...releases[idx], ...payload }
+  } else {
+    const added = await window.api.releases.add(payload)
+    if (added?.error) { alert('Server error: ' + added.error); return }
+    releases.push(added)
+  }
+
+  closeReleaseModal()
+  renderHome()
+  } catch (err) {
+    alert('Unexpected error: ' + err.message)
+  }
+}
+
+async function deleteRelease(id) {
+  await window.api.releases.delete(id)
+  releases = releases.filter(r => r.id !== id)
+  renderHome()
+}
+
+// ── Pinned Messages CRUD ───────────────────────────────────────────────────────
+function renderPinnedMessages() {
+  const container = $('home-pinned-messages')
+  if (!container) return
+  if (!pinnedMessages.length) {
+    container.innerHTML = '<p style="color:var(--text-muted,#888);font-size:13px;margin:0">No pinned messages yet.</p>'
+    return
+  }
+  container.innerHTML = pinnedMessages.map(msg => `
+    <div class="home-pinned-msg" data-id="${msg.id}">
+      <p class="home-pinned-msg-text">${msg.content.replace(/\n/g, '<br>')}</p>
+      ${isAdmin ? `<div class="home-pinned-msg-actions">
+        <button class="btn-pinned-delete" data-id="${msg.id}" title="Delete">✕</button>
+      </div>` : ''}
+    </div>
+  `).join('')
+}
+
+function openPinnedModal() {
+  $('pm-content').value = ''
+  $('modal-pinned').style.display = 'flex'
+  $('pm-content').focus()
+}
+
+function closePinnedModal() {
+  $('modal-pinned').style.display = 'none'
+}
+
+async function savePinnedMessage() {
+  const content = $('pm-content').value.trim()
+  if (!content) return
+  try {
+    const added = await window.api.pinned.add({ content })
+    if (added?.error) { alert('Server error: ' + added.error); return }
+    pinnedMessages.unshift(added)
+    closePinnedModal()
+    renderPinnedMessages()
+  } catch (err) {
+    alert('Unexpected error: ' + err.message)
+  }
+}
+
+async function deletePinnedMessage(id) {
+  await window.api.pinned.delete(id)
+  pinnedMessages = pinnedMessages.filter(m => m.id !== id)
+  renderPinnedMessages()
+}
+
 // ── Market Lookup ─────────────────────────────────────────────────────────────
+const EBAY_DARK_CSS = `
+  * { background-color: inherit; color: inherit; }
+  html { background: #0f0f0f !important; color: #e0e0e0 !important; }
+  body, div, section, article, aside, header, footer, nav, main,
+  [class], [id] {
+    background-color: #0f0f0f !important;
+    border-color: #2a2a2a !important;
+    color: #e0e0e0 !important;
+  }
+  img, video, canvas, svg, picture, iframe { background-color: #1a1a1a !important; }
+  a { color: #a78bfa !important; }
+  a:hover { color: #c4b5fd !important; }
+  input, select, textarea, button {
+    background-color: #1e1e1e !important;
+    color: #e0e0e0 !important;
+    border-color: #333 !important;
+  }
+  .s-item__price, [class*="price"], [class*="Price"] { color: #4ade80 !important; }
+  [class*="sold-price"], [class*="POSITIVE"] { color: #4ade80 !important; }
+  [class*="negative"], [class*="NEGATIVE"] { color: #f87171 !important; }
+  [style*="background-color: rgb(255"] { background-color: #0f0f0f !important; }
+  [style*="background: white"], [style*="background: #fff"], [style*="background:#fff"] { background: #0f0f0f !important; }
+  [style*="color: black"], [style*="color:#000"] { color: #e0e0e0 !important; }
+`
+
+// Wire up eBay dark mode injection once on startup
+function initEbayDarkMode() {
+  const wv = $('market-webview')
+  wv.addEventListener('dom-ready', () => {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark'
+    if (dark) wv.insertCSS(EBAY_DARK_CSS)
+  })
+}
+
 function runMarketSearch() {
   const query = $('market-query').value.trim()
   if (!query) return

@@ -126,6 +126,102 @@ registerCollection('sales')
 registerCollection('inventory')
 registerCollection('packages')
 
+// ── Releases — fetched from Railway server, not stored locally ────────────────
+const SERVER_URL = DISCORD.serverUrl
+
+ipcMain.handle('releases:getAll', async () => {
+  try {
+    const res = await fetch(`${SERVER_URL}/releases`)
+    if (!res.ok) return []
+    return await res.json()
+  } catch { return [] }
+})
+
+function getStoredJWT() {
+  try {
+    const authPath = path.join(app.getPath('userData'), 'auth.json')
+    if (!fs.existsSync(authPath)) return null
+    return JSON.parse(fs.readFileSync(authPath, 'utf8'))?.jwt || null
+  } catch { return null }
+}
+
+ipcMain.handle('releases:add', async (_, item) => {
+  try {
+    const token = getStoredJWT()
+    const res = await fetch(`${SERVER_URL}/releases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(item)
+    })
+    return res.json()
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('releases:update', async (_, id, updates) => {
+  try {
+    const token = getStoredJWT()
+    const res = await fetch(`${SERVER_URL}/releases/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(updates)
+    })
+    return res.json()
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('releases:delete', async (_, id) => {
+  try {
+    const token = getStoredJWT()
+    const res = await fetch(`${SERVER_URL}/releases/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    return res.json()
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
+// ── Pinned messages — fetched from Railway server ─────────────────────────────
+ipcMain.handle('pinned:getAll', async () => {
+  try {
+    const res = await fetch(`${SERVER_URL}/pinned`)
+    if (!res.ok) return []
+    return await res.json()
+  } catch { return [] }
+})
+
+ipcMain.handle('pinned:add', async (_, item) => {
+  try {
+    const token = getStoredJWT()
+    const res = await fetch(`${SERVER_URL}/pinned`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(item)
+    })
+    return res.json()
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('pinned:delete', async (_, id) => {
+  try {
+    const token = getStoredJWT()
+    const res = await fetch(`${SERVER_URL}/pinned/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    return res.json()
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
 // ── Photo handlers ────────────────────────────────────────────────────────────
 ipcMain.handle('photo:pick', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -745,8 +841,9 @@ ipcMain.handle('auth:check', () => {
   return {
     authenticated: true,
     user: {
-      username: auth.username || payload.username || 'User',
-      avatar:   auth.avatar   || null,
+      userId:   payload.userId  || null,
+      username: auth.username   || payload.username || 'User',
+      avatar:   auth.avatar     || null,
     },
   }
 })

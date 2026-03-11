@@ -43,6 +43,13 @@ async function initDB() {
       updated_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pinned_messages (
+      id         TEXT PRIMARY KEY,
+      content    TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `)
   console.log('Database ready')
 }
 
@@ -242,6 +249,44 @@ app.delete('/releases/:id', requireAdmin, async (req, res) => {
     res.json({ success: true })
   } catch (err) {
     console.error('DELETE /releases error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+// ── Pinned messages routes ────────────────────────────────────────────────────
+
+// GET /pinned — public
+app.get('/pinned', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM pinned_messages ORDER BY created_at DESC')
+    res.json(result.rows.map(r => ({ id: r.id, content: r.content, createdAt: r.created_at })))
+  } catch (err) {
+    console.error('GET /pinned error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+// POST /pinned — admin only
+app.post('/pinned', requireAdmin, async (req, res) => {
+  const { content } = req.body
+  if (!content) return res.status(400).json({ error: 'content required' })
+  const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  try {
+    await pool.query('INSERT INTO pinned_messages (id, content) VALUES ($1, $2)', [id, content])
+    res.json({ id, content })
+  } catch (err) {
+    console.error('POST /pinned error:', err)
+    res.status(500).json({ error: 'Database error' })
+  }
+})
+
+// DELETE /pinned/:id — admin only
+app.delete('/pinned/:id', requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM pinned_messages WHERE id=$1', [req.params.id])
+    res.json({ success: true })
+  } catch (err) {
+    console.error('DELETE /pinned error:', err)
     res.status(500).json({ error: 'Database error' })
   }
 })

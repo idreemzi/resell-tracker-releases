@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('api', {
   sales:          collection('sales'),
   inventory:      collection('inventory'),
   packages:       collection('packages'),
+  releases:       collection('releases'),
+  pinned:         collection('pinned'),
   pickPhoto:      ()                     => ipcRenderer.invoke('photo:pick'),
   readPhoto:      filePath               => ipcRenderer.invoke('photo:read', filePath),
   openTracking:   (trackingNum, carrier) => ipcRenderer.invoke('tracking:open', trackingNum, carrier),

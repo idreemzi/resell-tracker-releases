@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('api', {
   getSettings:    ()                     => ipcRenderer.invoke('settings:get'),
   setSettings:    settings               => ipcRenderer.invoke('settings:set', settings),
   openExternal:   url                    => ipcRenderer.invoke('shell:openExternal', url),
+  getVersion:     ()                     => ipcRenderer.invoke('app:version'),
+  windowMinimize: ()                     => ipcRenderer.invoke('window:minimize'),
+  windowClose:    ()                     => ipcRenderer.invoke('window:close'),
   auth: {
     check:        ()  => ipcRenderer.invoke('auth:check'),
     login:        ()  => ipcRenderer.invoke('auth:login'),

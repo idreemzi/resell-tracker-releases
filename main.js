@@ -22,7 +22,8 @@ async function createWindow() {
       nodeIntegration: false
     },
     title: 'Resell Tracker',
-    backgroundColor: '#faf3e8',
+    backgroundColor: '#f0e6d3',
+    frame: false,
     show: false
   })
 
@@ -478,6 +479,10 @@ ipcMain.handle('shell:openExternal', (_, url) => {
   shell.openExternal(url)
 })
 
+ipcMain.handle('app:version',      () => app.getVersion())
+ipcMain.handle('window:minimize',  () => mainWindow.minimize())
+ipcMain.handle('window:close',     () => mainWindow.close())
+
 ipcMain.handle('tracking:fetchEvents', async (_, trackingNumber, carrier) => {
   // 17track API path (optional, if user has configured a key)
   const { trackingApiKey } = getSettings()
@@ -684,7 +689,7 @@ function startCallbackServer(state) {
       const retState = url.searchParams.get('state')
 
       res.writeHead(200, { 'Content-Type': 'text/html' })
-      res.end(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#faf3e8">
+      res.end(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f0f2f5">
         <h2 style="color:#16a34a">✓ Authorized!</h2>
         <p style="color:#6b6563">You can close this tab and return to Resell Tracker.</p>
       </body></html>`)
@@ -707,13 +712,18 @@ function startCallbackServer(state) {
   })
 }
 
-ipcMain.handle('auth:check', async () => {
+ipcMain.handle('auth:check', () => {
   const auth = readAuth()
-  if (!auth) return { authenticated: false }
-  const ok = await checkAuth()
+  if (!auth?.jwt) return { authenticated: false }
+  // Local-only check — full server verify only happens on app startup via checkAuth()
+  const payload = verifyJWT(auth.jwt)
+  if (!payload) return { authenticated: false }
   return {
-    authenticated: ok,
-    user: ok ? { username: auth.username, avatar: auth.avatar } : null,
+    authenticated: true,
+    user: {
+      username: auth.username || payload.username || 'User',
+      avatar:   auth.avatar   || null,
+    },
   }
 })
 

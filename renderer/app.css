@@ -65,7 +65,7 @@ html, body {
   -webkit-app-region: drag;
 }
 /* Buttons inside the nav must not be draggable */
-.topnav button, .topnav .nav-user, .topnav .win-controls { -webkit-app-region: no-drag; }
+.topnav button, .topnav .nav-user, .topnav .nav-user-group, .topnav .win-controls { -webkit-app-region: no-drag; }
 
 .nav-logo {
   color: var(--text-muted);
@@ -155,6 +155,14 @@ html, body {
   transition: all 0.15s;
 }
 .btn-settings:hover { background: var(--border); color: var(--text); }
+.nav-user-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  position: relative;
+  -webkit-app-region: no-drag;
+}
 .nav-user {
   width: 34px;
   height: 34px;
@@ -166,6 +174,45 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+}
+.nav-user img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+.nav-user-tooltip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1a1a1a);
+  border: 1px solid var(--border, #e0d6c8);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 999;
+}
+.nav-user-tooltip::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  background: var(--card-bg, #fff);
+  border-left: 1px solid var(--border, #e0d6c8);
+  border-top: 1px solid var(--border, #e0d6c8);
+  transform: rotate(45deg);
+}
+.nav-user-group:hover .nav-user-tooltip {
+  display: block;
 }
 
 /* ── Content ─────────────────────────────────────────────────────────── */
@@ -514,6 +561,35 @@ html, body {
   overflow: hidden;
 }
 .modal-sm { max-width: 420px; }
+
+.settings-profile-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 20px 16px 24px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.settings-profile-avatar-wrap { position: relative; }
+.btn-dashboard {
+  margin-top: 12px;
+  padding: 7px 28px;
+  border-radius: 20px;
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.btn-dashboard:hover {
+  background: var(--accent);
+  color: #fff;
+}
 
 .modal-header {
   display: flex;

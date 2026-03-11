@@ -38,7 +38,13 @@
       <button class="btn-settings" id="btn-open-settings" title="Settings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
-      <div class="nav-user" id="nav-user-avatar">RT</div>
+      <div class="nav-user-group" id="nav-user-avatar">
+        <div class="nav-user">
+          <span id="nav-user-initials">RT</span>
+        </div>
+        <span id="nav-user-name" style="font-size:13px;font-weight:600;color:var(--text)"></span>
+        <div class="nav-user-tooltip" id="nav-user-tooltip"></div>
+      </div>
       <div class="win-controls">
         <button class="win-btn win-minimize" id="btn-minimize" title="Minimize"></button>
         <button class="win-btn win-close"    id="btn-close"    title="Close"></button>
@@ -376,6 +382,17 @@
       <button class="modal-close" id="modal-settings-close">✕</button>
     </div>
     <div class="modal-body">
+
+      <!-- Discord profile card -->
+      <div class="settings-profile-card">
+        <div class="settings-profile-avatar-wrap">
+          <img id="settings-avatar-img" src="" alt="" style="display:none;width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--accent)" />
+          <div id="settings-avatar-initials" style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:22px;font-weight:700;display:flex;align-items:center;justify-content:center;border:3px solid var(--accent)">RT</div>
+        </div>
+        <div id="settings-username" style="font-size:15px;font-weight:700;color:var(--text);margin-top:10px">Loading...</div>
+        <button class="btn-dashboard" id="btn-dashboard">Dashboard</button>
+      </div>
+
       <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div>

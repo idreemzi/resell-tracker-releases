@@ -4,6 +4,7 @@ let inventory = []
 let packages  = []
 
 let chartYear = new Date().getFullYear()
+const chartVisible = { spent: true, revenue: true, profit: true }
 let editMode  = null   // { collection, id } or null
 
 const PIPELINE_STAGES = ['Ordered', 'Awaiting Pickup', 'In Transit', 'Out for Delivery', 'Delivered']
@@ -89,8 +90,46 @@ const ACTION_BTNS_PKG = `<div class="row-actions"><button class="btn-row btn-ref
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 function init() {
-  bindEvents()   // always wire up buttons first, synchronously
-  loadData()     // then load data async
+  bindEvents()
+  loadData()
+  // Sync toggle state to match whatever theme localStorage applied on load
+  const dark = localStorage.getItem('rt-theme') === 'dark'
+  $('dark-mode-track').classList.toggle('on', dark)
+  initStatusBar()
+  initNavUser()
+}
+
+async function initNavUser() {
+  const result = await window.api.auth.check()
+  if (!result?.user) return
+  const { username, avatar } = result.user
+
+  $('nav-user-name').textContent = username
+  $('nav-user-tooltip').textContent = '@' + username
+
+  if (avatar) {
+    const img = document.createElement('img')
+    img.src = avatar
+    img.alt = username
+    const circle = document.querySelector('#nav-user-avatar .nav-user')
+    circle.innerHTML = ''
+    circle.appendChild(img)
+  } else {
+    $('nav-user-initials').textContent = username.slice(0, 2).toUpperCase()
+  }
+}
+
+function initStatusBar() {
+  // Version
+  window.api.getVersion().then(v => { $('status-version').textContent = `Version ${v}` })
+
+  // Live clock
+  function tick() {
+    const now = new Date()
+    $('status-clock').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
+  tick()
+  setInterval(tick, 1000)
 }
 
 async function loadData() {
@@ -354,7 +393,7 @@ function renderChart() {
   $('chart-title').textContent = `Sales History for ${chartYear}`
 
   const W  = (svgEl.parentElement ? svgEl.parentElement.clientWidth : 0) || 600
-  const H  = 180
+  const H  = 150
   const PL = 42, PR = 12, PT = 10, PB = 28
   const cW = W - PL - PR
   const cH = H - PT - PB
@@ -377,12 +416,12 @@ function renderChart() {
     months[mo].profit  += (sell - buy - fees)
   }
 
-  // Find max value
+  // Find max value (only from visible series)
   let maxVal = 10
   for (let idx = 0; idx < 12; idx++) {
-    if (months[idx].spent   > maxVal) maxVal = months[idx].spent
-    if (months[idx].revenue > maxVal) maxVal = months[idx].revenue
-    if (months[idx].profit  > maxVal) maxVal = months[idx].profit
+    if (chartVisible.spent   && months[idx].spent   > maxVal) maxVal = months[idx].spent
+    if (chartVisible.revenue && months[idx].revenue > maxVal) maxVal = months[idx].revenue
+    if (chartVisible.profit  && months[idx].profit  > maxVal) maxVal = months[idx].profit
   }
   const yStep = maxVal <= 50 ? 10 : maxVal <= 200 ? 50 : maxVal <= 500 ? 100 : maxVal <= 2000 ? 500 : 1000
   const yMax  = Math.ceil(maxVal / yStep) * yStep || 10
@@ -399,7 +438,7 @@ function renderChart() {
   for (let gi = 0; gi <= 5; gi++) {
     const v = (yMax / 5) * gi
     const y = PT + cH - (v / yMax) * cH
-    grid += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W - PR}" y2="${y.toFixed(1)}" stroke="#e8e0d4" stroke-width="1"/>`
+    grid += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W - PR}" y2="${y.toFixed(1)}" stroke="#e0d4c0" stroke-width="1"/>`
     const label = v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v)
     grid += `<text x="${(PL - 5).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="#a09890">${label}</text>`
   }
@@ -407,8 +446,10 @@ function renderChart() {
   // Bars + X labels
   for (let mo = 0; mo < 12; mo++) {
     const x0   = PL + mo * slotW + (slotW - 3 * barW - 2 * gap) / 2
+    const keys = ['spent', 'revenue', 'profit']
     const vals = [months[mo].spent, months[mo].revenue, months[mo].profit]
     for (let bi = 0; bi < 3; bi++) {
+      if (!chartVisible[keys[bi]]) continue
       const v = vals[bi]
       const h = Math.max(0, (v / yMax) * cH)
       const bx = x0 + bi * (barW + gap)
@@ -823,6 +864,15 @@ function bindEvents() {
   $('chart-prev').addEventListener('click', () => { chartYear--; renderChart() })
   $('chart-next').addEventListener('click', () => { chartYear++; renderChart() })
 
+  // Legend toggles
+  ;['spent', 'revenue', 'profit'].forEach(key => {
+    $(`legend-${key}`).addEventListener('click', () => {
+      chartVisible[key] = !chartVisible[key]
+      $(`legend-${key}`).classList.toggle('legend-off', !chartVisible[key])
+      renderChart()
+    })
+  })
+
   // Package carrier auto-detection
   $('p-tracking').addEventListener('input', e => {
     const detected = guessCarrier(e.target.value)
@@ -855,20 +905,33 @@ function bindEvents() {
     }
   })
 
+  // Window controls
+  $('btn-minimize').addEventListener('click', () => window.api.windowMinimize())
+  $('btn-close').addEventListener('click',    () => window.api.windowClose())
+
   // Settings
   $('btn-open-settings').addEventListener('click', openSettingsModal)
   $('modal-settings-close').addEventListener('click', closeSettingsModal)
   $('btn-settings-cancel').addEventListener('click', closeSettingsModal)
   $('btn-settings-save').addEventListener('click', saveSettings)
-  $('link-17track').addEventListener('click', e => {
-    e.preventDefault()
-    window.api.openExternal('https://www.17track.net/en/apipage')
-  })
+
   $('btn-logout').addEventListener('click', async () => {
     await window.api.auth.logout()
     window.location.href = 'login.html'
   })
+
+  $('btn-dashboard').addEventListener('click', () => {
+    window.api.openExternal('https://discord.com/channels/@me')
+  })
   $('modal-settings').addEventListener('click', e => { if (e.target.id === 'modal-settings') closeSettingsModal() })
+
+  // Dark mode toggle — apply and save immediately on click
+  $('dark-mode-track').addEventListener('click', async () => {
+    const nowDark = !$('dark-mode-track').classList.contains('on')
+    applyTheme(nowDark)
+    const existing = await window.api.getSettings()
+    await window.api.setSettings({ ...existing, darkMode: nowDark })
+  })
 
   // Lightbox close
   $('lightbox').addEventListener('click', () => { $('lightbox').style.display = 'none' })
@@ -948,25 +1011,45 @@ function bindEvents() {
   window.addEventListener('resize', renderChart)
 }
 
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function applyTheme(dark) {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : '')
+  localStorage.setItem('rt-theme', dark ? 'dark' : 'light')
+  $('dark-mode-track').classList.toggle('on', dark)
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 async function openSettingsModal() {
-  const settings = await window.api.getSettings()
-  $('settings-api-key').value = settings.trackingApiKey || ''
+  const [settings, authResult] = await Promise.all([
+    window.api.getSettings(),
+    window.api.auth.check()
+  ])
   $('settings-api-status').style.display = 'none'
+  const dark = settings.darkMode || false
+  $('dark-mode-track').classList.toggle('on', dark)
+
+  // Populate Discord profile card
+  const user = authResult?.user
+  if (user) {
+    $('settings-username').textContent = '@' + user.username
+    if (user.avatar) {
+      $('settings-avatar-img').src = user.avatar
+      $('settings-avatar-img').style.display = 'block'
+      $('settings-avatar-initials').style.display = 'none'
+    } else {
+      $('settings-avatar-initials').textContent = user.username.slice(0, 2).toUpperCase()
+      $('settings-avatar-initials').style.display = 'flex'
+      $('settings-avatar-img').style.display = 'none'
+    }
+  }
+
   $('modal-settings').style.display = 'flex'
-  setTimeout(() => $('settings-api-key').focus(), 50)
 }
 
 function closeSettingsModal() { $('modal-settings').style.display = 'none' }
 
-async function saveSettings() {
-  const key = $('settings-api-key').value.trim()
-  await window.api.setSettings({ trackingApiKey: key })
-  const el = $('settings-api-status')
-  el.style.display = 'block'
-  el.style.color = 'var(--green-text)'
-  el.textContent = key ? '✓ API key saved — tracking will now use 17track' : '✓ Saved (no API key — falling back to HTML scraping)'
-  setTimeout(closeSettingsModal, 1400)
+function saveSettings() {
+  closeSettingsModal()
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────

@@ -78,6 +78,10 @@ async function initDB() {
       PRIMARY KEY (monitor_id, product_id)
     )
   `)
+  // New columns for existing deployments
+  await pool.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS product_url TEXT`)
+  await pool.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS price_alert BOOLEAN DEFAULT false`)
+  await pool.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS price_threshold TEXT`)
   startMonitorEngine()
   console.log('Database ready')
 }
@@ -349,6 +353,13 @@ function stopMonitor(monitorId) {
   if (timer) { clearInterval(timer); monitorTimers.delete(monitorId) }
 }
 
+// Parse stored variant state — handles old boolean format and new {available, price} format
+function parseVariantState(stored) {
+  if (stored === null || stored === undefined) return { available: false, price: null }
+  if (typeof stored === 'boolean') return { available: stored, price: null }
+  return { available: stored.available ?? false, price: stored.price ?? null }
+}
+
 async function runMonitor(monitorId) {
   let monitor
   try {
@@ -360,16 +371,35 @@ async function runMonitor(monitorId) {
   let baseUrl = monitor.site_url.trim().replace(/\/$/, '')
   if (!baseUrl.startsWith('http')) baseUrl = 'https://' + baseUrl
 
+  // ── Fetch products (specific product URL or full site) ────────────────────
   let products
   try {
-    const res = await fetch(`${baseUrl}/products.json?limit=250`, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      signal: AbortSignal.timeout(15000)
-    })
-    if (!res.ok) return
-    const data = await res.json()
-    products = data.products
-    if (!Array.isArray(products)) return
+    if (monitor.product_url) {
+      // Specific product monitor — extract handle from URL
+      const productUrl = monitor.product_url.trim().replace(/\/$/, '')
+      const fetchUrl = productUrl.endsWith('.json') ? productUrl : `${productUrl}.json`
+      const res = await fetch(fetchUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        signal: AbortSignal.timeout(15000)
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if (!data.product) return
+      products = [data.product]
+      // Override baseUrl from the product URL
+      const parsed = new URL(fetchUrl)
+      baseUrl = `${parsed.protocol}//${parsed.hostname}`
+    } else {
+      // Whole site monitor
+      const res = await fetch(`${baseUrl}/products.json?limit=250`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        signal: AbortSignal.timeout(15000)
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      products = data.products
+      if (!Array.isArray(products)) return
+    }
   } catch { return }
 
   const seenCount = await pool.query('SELECT COUNT(*) FROM monitor_seen WHERE monitor_id = $1', [monitorId])
@@ -382,13 +412,16 @@ async function runMonitor(monitorId) {
   for (const product of products) {
     const productId = String(product.id)
 
-    if (keywords.length > 0) {
+    if (!monitor.product_url && keywords.length > 0) {
       const title = (product.title || '').toLowerCase()
       if (!keywords.some(kw => title.includes(kw))) continue
     }
 
+    // Build current variant state: {variantId: {available, price}}
     const currentVariants = {}
-    for (const v of (product.variants || [])) currentVariants[String(v.id)] = v.available
+    for (const v of (product.variants || [])) {
+      currentVariants[String(v.id)] = { available: v.available, price: v.price || null }
+    }
 
     try {
       if (isFirstRun) {
@@ -403,11 +436,12 @@ async function runMonitor(monitorId) {
           [monitorId, productId]
         )
         if (seen.rows.length === 0) {
+          // New product
           await pool.query(
             `INSERT INTO monitor_seen (monitor_id, product_id, variant_data, updated_at) VALUES ($1, $2, $3, NOW())`,
             [monitorId, productId, JSON.stringify(currentVariants)]
           )
-          const anyAvailable = Object.values(currentVariants).some(v => v)
+          const anyAvailable = Object.values(currentVariants).some(v => v.available)
           if (anyAvailable) {
             const availableVariants = (product.variants || []).filter(v => v.available).map(v => v.title)
             await sendDiscordPing(monitor, product, baseUrl, 'new', availableVariants)
@@ -415,18 +449,45 @@ async function runMonitor(monitorId) {
         } else {
           const prevVariants = seen.rows[0].variant_data || {}
           const restockedVariants = []
-          for (const [varId, available] of Object.entries(currentVariants)) {
-            if (available && prevVariants[varId] === false) {
+          let priceDropped = false
+          let oldPrice = null
+          let newPrice = null
+
+          for (const [varId, curr] of Object.entries(currentVariants)) {
+            const prev = parseVariantState(prevVariants[varId])
+            const currState = parseVariantState(curr)
+
+            // Restock check
+            if (currState.available && !prev.available) {
               const variant = (product.variants || []).find(v => String(v.id) === varId)
               if (variant) restockedVariants.push(variant.title)
             }
+
+            // Price drop check
+            if (monitor.price_alert && currState.price && prev.price) {
+              const currP = parseFloat(currState.price)
+              const prevP = parseFloat(prev.price)
+              if (currP < prevP) {
+                const threshold = monitor.price_threshold ? parseFloat(monitor.price_threshold) : null
+                if (!threshold || currP <= threshold) {
+                  priceDropped = true
+                  oldPrice = prevP
+                  newPrice = currP
+                }
+              }
+            }
           }
+
           await pool.query(
             `UPDATE monitor_seen SET variant_data = $1, updated_at = NOW() WHERE monitor_id = $2 AND product_id = $3`,
             [JSON.stringify(currentVariants), monitorId, productId]
           )
+
           if (restockedVariants.length > 0) {
             await sendDiscordPing(monitor, product, baseUrl, 'restock', restockedVariants)
+          }
+          if (priceDropped) {
+            await sendDiscordPing(monitor, product, baseUrl, 'price_drop', [], { oldPrice, newPrice })
           }
         }
       }
@@ -436,28 +497,43 @@ async function runMonitor(monitorId) {
   }
 }
 
-async function sendDiscordPing(monitor, product, baseUrl, type, variants) {
-  const isRestock = type === 'restock'
-  const color = isRestock ? 0x00ff7f : 0x5865f2
+async function sendDiscordPing(monitor, product, baseUrl, type, variants = [], extra = {}) {
   const productUrl = `${baseUrl}/products/${product.handle}`
   const image = product.images?.[0]?.src || null
   const firstVariant = (product.variants || []).find(v => v.available) || product.variants?.[0]
-  const price = firstVariant?.price ? `$${parseFloat(firstVariant.price).toFixed(2)}` : 'N/A'
-  const variantText = variants.length > 0
-    ? variants.slice(0, 15).join(', ') + (variants.length > 15 ? ` +${variants.length - 15} more` : '')
-    : 'Available'
+  const currentPrice = firstVariant?.price ? `$${parseFloat(firstVariant.price).toFixed(2)}` : 'N/A'
+
+  let color, title, fields
+
+  if (type === 'price_drop') {
+    color = 0xff9500
+    title = `💰 Price Drop: ${product.title}`
+    fields = [
+      { name: 'Was', value: `$${extra.oldPrice.toFixed(2)}`, inline: true },
+      { name: 'Now', value: `$${extra.newPrice.toFixed(2)}`, inline: true },
+      { name: 'Saved', value: `$${(extra.oldPrice - extra.newPrice).toFixed(2)}`, inline: true },
+      { name: 'Site', value: monitor.name, inline: false }
+    ]
+  } else {
+    color = type === 'restock' ? 0x00ff7f : 0x5865f2
+    title = `${type === 'restock' ? '🔄 Restock' : '🆕 New Product'}: ${product.title}`
+    const variantText = variants.length > 0
+      ? variants.slice(0, 15).join(', ') + (variants.length > 15 ? ` +${variants.length - 15} more` : '')
+      : 'Available'
+    fields = [
+      { name: 'Price', value: currentPrice, inline: true },
+      { name: 'Site', value: monitor.name, inline: true },
+      { name: type === 'restock' ? 'Restocked Sizes' : 'Available Sizes', value: variantText, inline: false }
+    ]
+  }
 
   const payload = {
     content: monitor.ping_role ? `<@&${monitor.ping_role}>` : undefined,
     embeds: [{
-      title: `${isRestock ? '🔄 Restock' : '🆕 New Product'}: ${product.title}`,
+      title,
       url: productUrl,
       color,
-      fields: [
-        { name: 'Price', value: price, inline: true },
-        { name: 'Site', value: monitor.name, inline: true },
-        { name: isRestock ? 'Restocked Sizes' : 'Available Sizes', value: variantText, inline: false }
-      ],
+      fields,
       footer: { text: `Resell Tracker Monitor • ${monitor.name}` },
       timestamp: new Date().toISOString()
     }]
@@ -494,14 +570,15 @@ app.get('/monitors', requireAdmin, async (req, res) => {
 })
 
 app.post('/monitors', requireAdmin, async (req, res) => {
-  const { name, siteUrl, keywords, webhookUrl, pingRole, intervalSec } = req.body
+  const { name, siteUrl, productUrl, keywords, webhookUrl, pingRole, intervalSec, priceAlert, priceThreshold } = req.body
   if (!name || !siteUrl || !webhookUrl) return res.status(400).json({ error: 'name, siteUrl, webhookUrl required' })
   const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   try {
     await pool.query(
-      `INSERT INTO monitors (id, name, site_url, keywords, webhook_url, ping_role, interval_sec)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, name, siteUrl, keywords || null, webhookUrl, pingRole || null, parseInt(intervalSec) || 60]
+      `INSERT INTO monitors (id, name, site_url, product_url, keywords, webhook_url, ping_role, interval_sec, price_alert, price_threshold)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [id, name, siteUrl, productUrl || null, keywords || null, webhookUrl,
+       pingRole || null, parseInt(intervalSec) || 60, !!priceAlert, priceThreshold || null]
     )
     const result = await pool.query('SELECT * FROM monitors WHERE id = $1', [id])
     const monitor = result.rows[0]
@@ -514,13 +591,14 @@ app.post('/monitors', requireAdmin, async (req, res) => {
 })
 
 app.put('/monitors/:id', requireAdmin, async (req, res) => {
-  const { name, siteUrl, keywords, webhookUrl, pingRole, intervalSec, active } = req.body
+  const { name, siteUrl, productUrl, keywords, webhookUrl, pingRole, intervalSec, active, priceAlert, priceThreshold } = req.body
   try {
     await pool.query(
-      `UPDATE monitors SET name=$1, site_url=$2, keywords=$3, webhook_url=$4, ping_role=$5,
-       interval_sec=$6, active=$7 WHERE id=$8`,
-      [name, siteUrl, keywords || null, webhookUrl, pingRole || null,
-       parseInt(intervalSec) || 60, active !== false, req.params.id]
+      `UPDATE monitors SET name=$1, site_url=$2, product_url=$3, keywords=$4, webhook_url=$5,
+       ping_role=$6, interval_sec=$7, active=$8, price_alert=$9, price_threshold=$10 WHERE id=$11`,
+      [name, siteUrl, productUrl || null, keywords || null, webhookUrl,
+       pingRole || null, parseInt(intervalSec) || 60, active !== false,
+       !!priceAlert, priceThreshold || null, req.params.id]
     )
     const result = await pool.query('SELECT * FROM monitors WHERE id = $1', [req.params.id])
     const monitor = result.rows[0]

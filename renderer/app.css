@@ -1862,3 +1862,32 @@ button svg, .btn-row svg, .btn-add svg, .tab-btn svg { pointer-events: none; }
   color: var(--text-muted);
   word-break: break-all;
 }
+
+/* ── Monitor type toggle ─────────────────────────────────────────────── */
+.monitor-type-toggle {
+  display: flex;
+  gap: 0;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.monitor-type-btn {
+  flex: 1;
+  padding: 7px 0;
+  font-size: 12px;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.monitor-type-btn.active {
+  background: var(--accent, #6366f1);
+  color: #fff;
+}
+[data-theme="dark"] .monitor-type-btn.active {
+  background: var(--teal);
+  color: #000;
+}

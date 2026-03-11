@@ -602,15 +602,35 @@
       <div class="form-row">
         <input type="text" id="mon-name" class="form-input grow" placeholder="Monitor Name * (e.g. Supreme, Kith)" />
       </div>
-      <div class="form-row">
-        <input type="url" id="mon-url" class="form-input grow" placeholder="Shopify Site URL * (e.g. https://www.supremenewyork.com)" />
+
+      <!-- Monitor type toggle -->
+      <div class="monitor-type-toggle">
+        <button class="monitor-type-btn active" id="mon-type-site" data-type="site">Whole Site</button>
+        <button class="monitor-type-btn" id="mon-type-product" data-type="product">Specific Product</button>
       </div>
+
       <div class="form-row">
+        <input type="url" id="mon-url" class="form-input grow" placeholder="Shopify Site URL * (e.g. https://kith.com)" />
+      </div>
+      <div class="form-row" id="mon-product-row" style="display:none">
+        <input type="url" id="mon-product-url" class="form-input grow" placeholder="Product URL * (e.g. https://kith.com/products/nike-dunk-low)" />
+      </div>
+      <div class="form-row" id="mon-keywords-row">
         <input type="text" id="mon-keywords" class="form-input grow" placeholder="Keywords (comma-separated, optional — e.g. jordan, dunk)" />
       </div>
       <div class="form-row">
         <input type="url" id="mon-webhook" class="form-input grow" placeholder="Discord Webhook URL *" />
       </div>
+
+      <!-- Price drop alerts -->
+      <div class="form-row" style="align-items:center;gap:12px">
+        <div class="toggle-track" id="mon-price-alert-track">
+          <div class="toggle-thumb"></div>
+        </div>
+        <label style="font-size:13px;font-weight:600;color:var(--text);cursor:pointer" id="mon-price-alert-label">Price drop alerts</label>
+        <input type="number" id="mon-price-threshold" class="form-input w160" placeholder="Alert below $  (optional)" min="0" step="0.01" style="display:none;margin-left:auto" />
+      </div>
+
       <div class="form-row">
         <input type="text" id="mon-role" class="form-input grow" placeholder="Role ID to ping (optional)" />
         <select id="mon-interval" class="form-input w160">

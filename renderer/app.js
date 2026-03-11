@@ -1065,20 +1065,49 @@ function bindEvents() {
   $('modal-monitor-close').addEventListener('click', () => { $('modal-monitor').style.display = 'none' })
   $('modal-monitor').addEventListener('click', e => { if (e.target === $('modal-monitor')) $('modal-monitor').style.display = 'none' })
 
+  // Monitor type toggle
+  $('mon-type-site').addEventListener('click',    () => setMonitorType('site'))
+  $('mon-type-product').addEventListener('click', () => setMonitorType('product'))
+
+  // Price alert toggle
+  $('mon-price-alert-track').addEventListener('click', () => {
+    const track = $('mon-price-alert-track')
+    const on = track.classList.toggle('on')
+    $('mon-price-threshold').style.display = on ? '' : 'none'
+  })
+  $('mon-price-alert-label').addEventListener('click', () => $('mon-price-alert-track').click())
+
   $('btn-monitor-save').addEventListener('click', async () => {
-    const name        = $('mon-name').value.trim()
-    const siteUrl     = $('mon-url').value.trim()
-    const keywords    = $('mon-keywords').value.trim()
-    const webhookUrl  = $('mon-webhook').value.trim()
-    const pingRole    = $('mon-role').value.trim()
-    const intervalSec = parseInt($('mon-interval').value) || 60
+    const name           = $('mon-name').value.trim()
+    const siteUrl        = $('mon-url').value.trim()
+    const isProduct      = $('mon-type-product').classList.contains('active')
+    const productUrl     = isProduct ? $('mon-product-url').value.trim() : null
+    const keywords       = !isProduct ? $('mon-keywords').value.trim() : null
+    const webhookUrl     = $('mon-webhook').value.trim()
+    const pingRole       = $('mon-role').value.trim()
+    const intervalSec    = parseInt($('mon-interval').value) || 60
+    const priceAlert     = $('mon-price-alert-track').classList.contains('on')
+    const priceThreshold = $('mon-price-threshold').value.trim()
 
     if (!name || !siteUrl || !webhookUrl) {
       $('mon-name').focus()
       return
     }
+    if (isProduct && !productUrl) {
+      $('mon-product-url').focus()
+      return
+    }
 
-    const payload = { name, siteUrl, keywords: keywords || null, webhookUrl, pingRole: pingRole || null, intervalSec }
+    const payload = {
+      name, siteUrl,
+      productUrl: productUrl || null,
+      keywords: keywords || null,
+      webhookUrl,
+      pingRole: pingRole || null,
+      intervalSec,
+      priceAlert,
+      priceThreshold: priceThreshold || null
+    }
 
     if (monitorEditId) {
       const existing = monitors.find(m => m.id === monitorEditId)
@@ -1500,6 +1529,8 @@ function renderMonitors() {
         <div class="monitor-status-dot ${active ? 'dot-active' : 'dot-paused'}"></div>
         <span class="monitor-name">${esc(m.name)}</span>
         <span class="monitor-badge ${active ? 'badge-active' : 'badge-paused'}">${active ? 'Active' : 'Paused'}</span>
+        ${m.product_url ? `<span class="monitor-badge" style="background:var(--teal-light);color:var(--teal)">Product</span>` : ''}
+        ${m.price_alert ? `<span class="monitor-badge" style="background:var(--orange-light);color:var(--orange)">💰 Price</span>` : ''}
         <div class="monitor-actions">
           <button class="btn-row btn-monitor-toggle" title="${active ? 'Pause' : 'Resume'}" data-id="${esc(m.id)}" data-active="${active}">
             ${active
@@ -1538,14 +1569,35 @@ function openMonitorModal(monitor = null) {
   monitorEditId = monitor ? monitor.id : null
   $('modal-monitor-title').textContent = monitor ? 'Edit Monitor' : 'Add Monitor'
   $('btn-monitor-save').textContent    = monitor ? 'Save' : 'Add Monitor'
-  $('mon-name').value     = monitor?.name || ''
-  $('mon-url').value      = monitor?.site_url || ''
-  $('mon-keywords').value = monitor?.keywords || ''
-  $('mon-webhook').value  = monitor?.webhook_url || ''
-  $('mon-role').value     = monitor?.ping_role || ''
-  $('mon-interval').value = String(monitor?.interval_sec || 60)
+  $('mon-name').value          = monitor?.name || ''
+  $('mon-url').value           = monitor?.site_url || ''
+  $('mon-product-url').value   = monitor?.product_url || ''
+  $('mon-keywords').value      = monitor?.keywords || ''
+  $('mon-webhook').value       = monitor?.webhook_url || ''
+  $('mon-role').value          = monitor?.ping_role || ''
+  $('mon-interval').value      = String(monitor?.interval_sec || 60)
+  $('mon-price-threshold').value = monitor?.price_threshold || ''
+
+  // Set monitor type
+  const isProduct = !!(monitor?.product_url)
+  setMonitorType(isProduct ? 'product' : 'site')
+
+  // Set price alert toggle
+  const priceOn = !!(monitor?.price_alert)
+  const track = $('mon-price-alert-track')
+  track.classList.toggle('on', priceOn)
+  $('mon-price-threshold').style.display = priceOn ? '' : 'none'
+
   $('modal-monitor').style.display = 'flex'
   $('mon-name').focus()
+}
+
+function setMonitorType(type) {
+  const isSite = type === 'site'
+  $('mon-type-site').classList.toggle('active', isSite)
+  $('mon-type-product').classList.toggle('active', !isSite)
+  $('mon-product-row').style.display    = isSite ? 'none' : ''
+  $('mon-keywords-row').style.display   = isSite ? '' : 'none'
 }
 
 // ── Market Lookup ─────────────────────────────────────────────────────────────

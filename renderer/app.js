@@ -833,6 +833,17 @@ function bindEvents() {
   $('btn-add-inv').addEventListener('click',  () => openInvModal())
   $('btn-add-pkg').addEventListener('click',  () => openPkgModal())
 
+  // Market Lookup
+  $('btn-market-search').addEventListener('click', runMarketSearch)
+  $('market-query').addEventListener('keydown', e => { if (e.key === 'Enter') runMarketSearch() })
+  document.querySelectorAll('.market-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.market-mode-btn').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      if ($('market-query').value.trim()) runMarketSearch()
+    })
+  })
+
   // Modal closes
   $('modal-sale-close').addEventListener('click', closeSaleModal)
   $('modal-inv-close').addEventListener('click',  closeInvModal)
@@ -1050,6 +1061,22 @@ function closeSettingsModal() { $('modal-settings').style.display = 'none' }
 
 function saveSettings() {
   closeSettingsModal()
+}
+
+// ── Market Lookup ─────────────────────────────────────────────────────────────
+function runMarketSearch() {
+  const query = $('market-query').value.trim()
+  if (!query) return
+  const sold = $('btn-mode-sold').classList.contains('active')
+
+  const q = encodeURIComponent(query)
+  const url = sold
+    ? `https://www.ebay.com/sch/i.html?_nkw=${q}&_sacat=0&_from=R40&rt=nc&LH_Sold=1&LH_Complete=1`
+    : `https://www.ebay.com/sch/i.html?_nkw=${q}&_sacat=0`
+
+  $('market-idle').style.display    = 'none'
+  $('market-webview').style.display = 'flex'
+  $('market-webview').src           = url
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────

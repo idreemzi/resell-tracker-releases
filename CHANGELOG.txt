@@ -1,6 +1,28 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
+v1.6.0 — 2026-03-10
+--------------------
+ADDED
+  - Market Lookup tab — search any item and see live eBay results embedded
+    directly inside the app (real browser, no scraping).
+  - Active / Sold toggle — switch between active eBay listings and recently
+    sold listings with one click. Switching auto-refreshes the results.
+  - Neon purple glow border around the eBay browser pane in dark mode.
+  - Discord profile picture and username now displayed in the top nav bar
+    next to the avatar circle.
+  - Settings modal now shows a Discord profile card with avatar, username,
+    and a Dashboard button at the top.
+
+FIXED
+  - Dark mode topnav cream/tan border replaced with a subtle dark separator.
+  - Inventory "Add Product" qty field now shows a "Quantity (# of units)"
+    label so users understand what the value represents.
+  - Auth check no longer hits the server on every settings open — server
+    verify only runs once on app startup.
+  - Username falls back to JWT payload if auth.json predates username
+    storage (avoids showing blank name after update).
+
 v1.5.3 — 2026-03-10
 --------------------
 CHANGED

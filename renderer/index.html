@@ -33,6 +33,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
         Packages
       </button>
+      <button class="tab-btn tab-market" data-view="market">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Market Lookup
+      </button>
     </div>
     <div class="nav-right">
       <button class="btn-settings" id="btn-open-settings" title="Settings">
@@ -194,6 +198,31 @@
       <div id="pkg-empty" class="empty-state" style="display:none">
         <p>No packages yet. Add a shipment to track!</p>
       </div>
+    </div>
+
+    <div id="view-market" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Market Lookup</h1>
+      </div>
+
+      <div class="market-search-bar">
+        <div class="market-search-input-wrap">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="market-query" class="market-search-input" placeholder="Search any item e.g. Jordan 1 Retro High OG Chicago…" />
+        </div>
+        <div class="market-mode-toggle">
+          <button class="market-mode-btn active" id="btn-mode-active" data-sold="false">Active</button>
+          <button class="market-mode-btn" id="btn-mode-sold" data-sold="true">Sold</button>
+        </div>
+        <button class="btn-add" id="btn-market-search">Search</button>
+      </div>
+
+      <div id="market-idle" class="market-idle">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".25"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <p>Search an item to see live eBay prices</p>
+      </div>
+
+      <webview id="market-webview" style="display:none;width:100%;flex:1;min-height:600px;border-radius:10px;overflow:hidden" src="about:blank"></webview>
     </div>
 
   </main>

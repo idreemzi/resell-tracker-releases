@@ -19,7 +19,8 @@ async function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webviewTag: true
     },
     title: 'Resell Tracker',
     backgroundColor: '#f0e6d3',
@@ -784,3 +785,131 @@ ipcMain.handle('auth:logout', () => {
 ipcMain.handle('auth:loadMain', () => {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
 })
+
+// ── Market Lookup ──────────────────────────────────────────────────────────────
+const EBAY_EXTRACT = `(function(){
+  var items = Array.from(document.querySelectorAll('.s-item'));
+  var out = [];
+  for(var i=0; i<items.length && out.length<20; i++){
+    var el = items[i];
+    var titleEl = el.querySelector('.s-item__title');
+    var priceEl = el.querySelector('.s-item__price');
+    var imgEl   = el.querySelector('img');
+    var linkEl  = el.querySelector('a.s-item__link') || el.querySelector('a[href*="/itm/"]');
+    if(!titleEl || !priceEl) continue;
+    var t = (titleEl.innerText||titleEl.textContent).replace(/^New listing\\s*/i,'').trim();
+    if(!t || t==='Shop on eBay') continue;
+    var imgSrc = imgEl ? (imgEl.src||imgEl.getAttribute('data-src')||'') : '';
+    // skip placeholder 1px images
+    if(imgSrc.includes('s-l140') || imgSrc.length < 10) imgSrc = '';
+    out.push({ title:t, price:(priceEl.innerText||priceEl.textContent).trim(), image:imgSrc, url:linkEl?linkEl.href:'' });
+  }
+  return out;
+})()`
+
+async function scrapeMarketPlatform(url, extractFn, readySelector, timeout) {
+  return new Promise((resolve) => {
+    const win = new BrowserWindow({
+      show: false, width: 1280, height: 900,
+      webPreferences: { nodeIntegration: false, contextIsolation: true }
+    })
+    win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+
+    let done = false
+    const finish = (val) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      try { win.destroy() } catch {}
+      resolve(val || [])
+    }
+
+    const timer = setTimeout(() => finish([]), timeout)
+
+    win.webContents.on('did-fail-load', (e, code) => { if (code !== -3) finish([]) })
+
+    win.webContents.on('did-finish-load', async () => {
+      for (let i = 0; i < 20 && !done; i++) {
+        await new Promise(r => setTimeout(r, 1000))
+        try {
+          const check = readySelector
+            ? await win.webContents.executeJavaScript(`!!document.querySelector(${JSON.stringify(readySelector)})`)
+            : await win.webContents.executeJavaScript(`document.querySelectorAll('img').length > 3`)
+          if (!check) continue
+          const results = await win.webContents.executeJavaScript(extractFn)
+          if (results && results.length) { finish(results); return }
+        } catch {}
+      }
+      finish([])
+    })
+
+    win.loadURL(url)
+  })
+}
+
+async function fetchEbay(query, sold) {
+  return new Promise((resolve) => {
+    const q = encodeURIComponent(query)
+    const url = sold
+      ? `https://www.ebay.com/sch/i.html?_nkw=${q}&_sacat=0&_from=R40&rt=nc&LH_Sold=1&LH_Complete=1`
+      : `https://www.ebay.com/sch/i.html?_nkw=${q}&_sacat=0`
+
+    // Use a persistent session so eBay cookies are kept between searches
+    const { session } = require('electron')
+    const ebaySess = session.fromPartition('persist:ebay')
+
+    const win = new BrowserWindow({
+      show: false,
+      width: 1280, height: 900,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        session: ebaySess,
+      }
+    })
+    win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+
+    let done = false
+    const finish = (val) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      try { win.destroy() } catch {}
+      resolve(val || [])
+    }
+
+    const timer = setTimeout(() => finish([]), 30000)
+
+    const wc = win.webContents
+    const safe = (fn) => { try { if (!win.isDestroyed()) return fn() } catch {} return Promise.resolve(null) }
+
+    wc.on('did-finish-load', async () => {
+      if (done) return
+      try {
+        const title = await safe(() => wc.getTitle()) || ''
+        if (title.includes('Pardon') || title.includes('Interruption')) {
+          // Show window so user can solve the one-time bot challenge
+          safe(() => win.show())
+          await new Promise(r => setTimeout(r, 20000))
+          if (done) return
+          safe(() => win.hide())
+          await new Promise(r => setTimeout(r, 3000))
+          if (done) return
+        }
+        // Poll for results
+        for (let i = 0; i < 15 && !done; i++) {
+          await new Promise(r => setTimeout(r, 1000))
+          if (done) return
+          const count = await safe(() => wc.executeJavaScript(`document.querySelectorAll('.s-item').length`))
+          if (!count || count < 2) continue
+          const results = await safe(() => wc.executeJavaScript(EBAY_EXTRACT))
+          if (results?.length) { finish(results); return }
+        }
+      } catch {}
+      finish([])
+    })
+
+    win.loadURL(url)
+  })
+}
+

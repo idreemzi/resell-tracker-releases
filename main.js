@@ -1085,12 +1085,10 @@ async function fetchBBAvailability(sku, ses) {
         const available = state === 'ADD_TO_CART' || state === 'PRE_ORDER'
         const price     = item.sku?.customerPrice?.currentPrice ?? null
         const title     = item.sku?.names?.title ?? null
-        console.log(`[local-monitor] BB API state=${state} price=${price} title=${title}`)
-        return { available, price, title }
+            return { available, price, title }
       }
     }
-    console.log(`[local-monitor] BB API status=${res.status}`)
-  } catch (e) { console.log(`[local-monitor] BB API error: ${e.message}`) }
+  } catch (e) { console.log(`[local-monitor] BB fetch error: ${e.message}`) }
   return null
 }
 

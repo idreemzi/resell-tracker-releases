@@ -3,11 +3,18 @@ RESELL TRACKER — CHANGELOG
 
 v1.5.2 — 2026-03-10
 --------------------
+ADDED
+  - Discord profile picture and username now shown in the top nav bar.
+  - Settings modal now displays a Discord profile card with avatar, username,
+    and a Dashboard button.
+
 FIXED
   - Dark mode topnav no longer shows a cream/tan border — replaced with a
     subtle dark separator.
   - Inventory "Add Product" modal now shows a "Quantity (# of units)" label
     above the qty field so users understand what the value represents.
+  - Auth check no longer hits the server on every settings open — only runs
+    once on app startup, preventing login conflicts.
 
 v1.5.1 — 2026-03-10
 --------------------

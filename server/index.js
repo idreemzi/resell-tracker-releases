@@ -248,6 +248,19 @@ app.delete('/releases/:id', requireAdmin, async (req, res) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000
-initDB()
-  .then(() => app.listen(PORT, () => console.log(`Auth server listening on port ${PORT}`)))
-  .catch(err => { console.error('Failed to init DB:', err); process.exit(1) })
+app.listen(PORT, () => console.log(`Auth server listening on port ${PORT}`))
+
+// Init DB with retries — server stays up even if DB isn't ready immediately
+async function initDBWithRetry(attempts = 10, delay = 3000) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await initDB()
+      return
+    } catch (err) {
+      console.error(`DB init attempt ${i}/${attempts} failed:`, err.message)
+      if (i < attempts) await new Promise(r => setTimeout(r, delay))
+    }
+  }
+  console.error('Could not connect to database after all retries.')
+}
+initDBWithRetry()

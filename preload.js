@@ -42,6 +42,12 @@ contextBridge.exposeInMainWorld('api', {
     logout:       ()  => ipcRenderer.invoke('auth:logout'),
     loadMain:     ()  => ipcRenderer.invoke('auth:loadMain'),
   },
-  onMonitorAlert: cb => ipcRenderer.on('monitor:alert',      (_, d) => cb(d)),
-  onShopifyFeed:  cb => ipcRenderer.on('shopify:feedUpdate', (_, d) => cb(d)),
+  onMonitorAlert:      cb => ipcRenderer.on('monitor:alert',        (_, d) => cb(d)),
+  onShopifyFeed:       cb => ipcRenderer.on('shopify:feedUpdate',   (_, d) => cb(d)),
+  onDiscordKeyword:    cb => ipcRenderer.on('discord:keywordAlert', (_, d) => cb(d)),
+  selfbot: {
+    getKeywords: ()    => ipcRenderer.invoke('selfbot:getKeywords'),
+    setKeywords: (kws) => ipcRenderer.invoke('selfbot:setKeywords', kws),
+    status:      ()    => ipcRenderer.invoke('selfbot:status'),
+  },
 })

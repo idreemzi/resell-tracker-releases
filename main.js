@@ -964,9 +964,105 @@ const localMonitorTimers  = new Map()  // monitorId → intervalId
 const localMonitorSeen    = new Map()  // monitorId → { available, price } (BB/Amazon)
 const localMonitorWindows = new Map()  // monitorId → persistent BrowserWindow
 const shopifyMonitorSeen  = new Map()  // monitorId → Map<productId, variantData>
-const LOCAL_MONITOR_SITES = new Set(['bestbuy', 'amazon', 'shopify'])
+const LOCAL_MONITOR_SITES = new Set(['bestbuy', 'amazon', 'shopify', 'lego'])
 
 let mainWindowRef = null  // set after mainWindow is created
+
+// ── Discord keyword alert receiver (Chrome extension → Electron) ──────────────
+const DISCORD_ALERT_PORT = 7429
+const discordAlertServer = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') { res.writeHead(204); return res.end() }
+  if (req.method === 'GET' && req.url === '/ping') {
+    res.writeHead(200); return res.end('ok')
+  }
+  if (req.method === 'POST' && req.url === '/discord-alert') {
+    let body = ''
+    req.on('data', d => body += d)
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body)
+        notifyRenderer('discord:keywordAlert', data)
+      } catch {}
+      res.writeHead(200); res.end('ok')
+    })
+    return
+  }
+  res.writeHead(404); res.end()
+})
+discordAlertServer.listen(DISCORD_ALERT_PORT, '127.0.0.1', () => {
+  console.log(`[discord-monitor] Listening on localhost:${DISCORD_ALERT_PORT}`)
+})
+discordAlertServer.on('error', err => {
+  console.error(`[discord-monitor] Server error: ${err.message}`)
+})
+
+// ── Selfbot config helpers ────────────────────────────────────────────────────
+const SELFBOT_CONFIG = 'C:\\Users\\Alex\\Desktop\\aler\\config_self.json'
+
+function readSelfbotConfig() {
+  try { return JSON.parse(fs.readFileSync(SELFBOT_CONFIG, 'utf8')) } catch { return null }
+}
+
+ipcMain.handle('selfbot:getKeywords', () => {
+  const cfg = readSelfbotConfig()
+  return (cfg?.keywords || []).join(', ')
+})
+
+ipcMain.handle('selfbot:setKeywords', (_, keywordsStr) => {
+  try {
+    const keywords = keywordsStr.split(',').map(k => k.trim()).filter(Boolean)
+    // Read as raw text and replace only the keywords array to avoid JS
+    // number precision loss corrupting large Discord channel ID integers
+    let raw = fs.readFileSync(SELFBOT_CONFIG, 'utf8')
+    const kwJson = JSON.stringify(keywords)
+    if (/"keywords"\s*:/.test(raw)) {
+      raw = raw.replace(/"keywords"\s*:\s*\[[\s\S]*?\]/, `"keywords": ${kwJson}`)
+    } else {
+      // No keywords key yet — insert after opening brace
+      raw = raw.replace(/^\{/, `{\n  "keywords": ${kwJson},`)
+    }
+    fs.writeFileSync(SELFBOT_CONFIG, raw, 'utf8')
+    // Restart selfbot so new keywords take effect
+    if (selfbotProcess) { selfbotProcess.kill(); selfbotProcess = null }
+    setTimeout(startSelfbot, 1000)
+    return { ok: true }
+  } catch (e) { return { error: e.message } }
+})
+
+ipcMain.handle('selfbot:status', () => !!selfbotProcess)
+
+// ── Spawn Python selfbot alert script ─────────────────────────────────────────
+const SELFBOT_SCRIPT = 'C:\\Users\\Alex\\Desktop\\aler\\self_alert.py'
+const SELFBOT_PYTHON = 'C:\\Users\\Alex\\Desktop\\aler\\.venv\\Scripts\\python.exe'
+let selfbotProcess = null
+
+function startSelfbot() {
+  if (selfbotProcess) return
+  const { spawn } = require('child_process')
+  selfbotProcess = spawn(SELFBOT_PYTHON, [SELFBOT_SCRIPT], {
+    cwd: 'C:\\Users\\Alex\\Desktop\\aler',
+    windowsHide: true
+  })
+  selfbotProcess.stdout.on('data', d => console.log(`[selfbot] ${d.toString().trim()}`))
+  selfbotProcess.stderr.on('data', d => console.log(`[selfbot] ${d.toString().trim()}`))
+  selfbotProcess.on('exit', (code) => {
+    console.log(`[selfbot] exited code=${code}`)
+    selfbotProcess = null
+  })
+  console.log('[selfbot] started')
+}
+
+app.whenReady().then(() => {
+  // small delay so the HTTP server is up before the script connects
+  setTimeout(startSelfbot, 3000)
+})
+
+app.on('before-quit', () => {
+  if (selfbotProcess) { selfbotProcess.kill(); selfbotProcess = null }
+})
 
 function notifyRenderer(channel, data) {
   if (mainWindowRef && !mainWindowRef.isDestroyed()) {
@@ -1052,6 +1148,24 @@ const BB_EXTRACT = `(async function(){
   } catch(e) { return null }
 })()`
 
+const LEGO_EXTRACT = `(function(){
+  try {
+    // Try to find the add-to-bag / sold-out button
+    const addBtn = document.querySelector('[data-test="add-to-bag"]')
+                || Array.from(document.querySelectorAll('button')).find(b => /add to bag/i.test(b.innerText))
+    const soldOut = document.querySelector('[data-test="sold-out"]')
+                 || Array.from(document.querySelectorAll('button,span')).find(el => /sold.?out|out.?of.?stock/i.test(el.innerText) && el.innerText.trim().length < 30)
+    if (!addBtn && !soldOut) return null  // page not loaded yet
+    const available = !!addBtn && !addBtn.disabled && !soldOut
+    const priceEl = document.querySelector('[data-test="product-price"]')
+                 || document.querySelector('[class*="ProductPrice"]')
+                 || document.querySelector('[class*="price"]')
+    const price = priceEl ? parseFloat(priceEl.innerText.replace(/[^0-9.]/g,'')) || null : null
+    const titleEl = document.querySelector('h1')
+    return { available, price, title: titleEl ? titleEl.innerText.trim() : null }
+  } catch(e) { return null }
+})()`
+
 const AMZN_EXTRACT = `(function(){
   try {
     const addBtn   = document.getElementById('add-to-cart-button')
@@ -1098,6 +1212,57 @@ async function fetchBBAvailability(sku, ses) {
   return null
 }
 
+async function fetchLegoAvailability(url) {
+  try {
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+    }
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(15000) })
+    if (!res.ok) return null
+    const html = await res.text()
+
+    // Extract embedded Apollo state from Next.js SSR
+    const match = html.match(/window\.__APOLLO_STATE__\s*=\s*(\{[\s\S]*?\});\s*(?:<\/script>|window\.)/)
+    if (!match) return null
+    const state = JSON.parse(match[1])
+
+    // Find the first ProductVariant with canAddToBag defined
+    let available = null, price = null, title = null
+    for (const val of Object.values(state)) {
+      if (val && typeof val.canAddToBag === 'boolean') {
+        available = val.canAddToBag
+        if (val.price?.centAmount != null) price = val.price.centAmount / 100
+        if (val.name) title = val.name
+        break
+      }
+    }
+
+    // Fallback: check __NEXT_DATA__ if Apollo state had no variants
+    if (available === null) {
+      const ndMatch = html.match(/window\.__NEXT_DATA__\s*=\s*(\{[\s\S]*?\});\s*<\/script>/)
+      if (ndMatch) {
+        const nd = JSON.parse(ndMatch[1])
+        const variants = nd?.props?.pageProps?.productData?.variants || []
+        if (variants.length > 0) {
+          available = variants.some(v => v.canAddToBag === true)
+          const priceInfo = variants[0]?.price
+          if (priceInfo?.centAmount != null) price = priceInfo.centAmount / 100
+          title = nd?.props?.pageProps?.productData?.name || null
+        }
+      }
+    }
+
+    if (available === null) return null
+    console.log(`[lego-monitor] Fast fetch OK — available:${available} price:${price}`)
+    return { available, price, title }
+  } catch (e) {
+    console.log(`[lego-monitor] fetchLegoAvailability error: ${e.message}`)
+    return null
+  }
+}
+
 async function scrapeLocalProduct(monitor, url) {
   if (localMonitorScraping.has(monitor.id)) return null
   const { session } = require('electron')
@@ -1109,7 +1274,15 @@ async function scrapeLocalProduct(monitor, url) {
       if (!sku) { console.log(`[local-monitor] Could not extract SKU from: ${url}`); return null }
       return fetchBBAvailability(sku, ses)
     }
-    // Amazon — still use BrowserWindow
+    // Lego — fast HTML fetch (parse __APOLLO_STATE__), fallback to BrowserWindow
+    if (monitor.site_type === 'lego') {
+      const legoResult = await fetchLegoAvailability(url)
+      if (legoResult) return legoResult
+      console.log(`[lego-monitor] HTML fetch failed for ${monitor.name}, falling back to BrowserWindow`)
+    }
+
+    // Amazon / Lego fallback — BrowserWindow scraper
+    const extractScript = monitor.site_type === 'lego' ? LEGO_EXTRACT : AMZN_EXTRACT
     const win = getOrCreateMonitorWindow(monitor)
     return new Promise((resolve) => {
       let done = false
@@ -1121,7 +1294,7 @@ async function scrapeLocalProduct(monitor, url) {
         for (let i = 0; i < 20 && !done; i++) {
           await new Promise(r => setTimeout(r, 1000))
           try {
-            const result = await win.webContents.executeJavaScript(AMZN_EXTRACT)
+            const result = await win.webContents.executeJavaScript(extractScript)
             if (result && result.available !== undefined) { finish(result); return }
           } catch (e) { break }
         }
@@ -1147,6 +1320,8 @@ async function fetchShopifyProducts(monitor) {
       const fetchUrl = pu.endsWith('.json') ? pu : `${pu}.json`
       const res = await fetch(fetchUrl, { headers, signal: AbortSignal.timeout(15000) })
       if (!res.ok) return null
+      const ct = res.headers.get('content-type') || ''
+      if (!ct.includes('application/json')) return null
       const data = await res.json()
       if (!data.product) return null
       const parsed = new URL(fetchUrl)
@@ -1157,6 +1332,11 @@ async function fetchShopifyProducts(monitor) {
       const res = await fetch(`${baseUrl}/products.json?limit=250`, { headers, signal: AbortSignal.timeout(15000) })
       console.log(`[shopify-monitor] ${baseUrl}/products.json status=${res.status}`)
       if (!res.ok) return null
+      const ct = res.headers.get('content-type') || ''
+      if (!ct.includes('application/json')) {
+        console.log(`[shopify-monitor] ${monitor.name} returned non-JSON (${ct}) — not a Shopify store`)
+        return null
+      }
       const data = await res.json()
       if (!Array.isArray(data.products)) return null
       return { products: data.products, baseUrl }
@@ -1319,7 +1499,7 @@ async function runLocalMonitor(monitor) {
 }
 
 async function sendLocalDiscordPing(monitor, product, type, extra) {
-  const SITE_LABELS = { bestbuy: 'Best Buy', amazon: 'Amazon' }
+  const SITE_LABELS = { bestbuy: 'Best Buy', amazon: 'Amazon', lego: 'LEGO' }
   const siteLabel = SITE_LABELS[monitor.site_type] || monitor.name
   const url = (monitor.product_url || monitor.site_url || '').trim()
   const color = type === 'price_drop' ? 0xff9500 : 0x00ff7f

@@ -8,7 +8,7 @@ let isAdmin        = false
 let monitors = []
 let monitorEditId = null
 const ADMIN_DISCORD_ID = '313100007551270912'
-const LOCAL_SITES = new Set(['bestbuy', 'amazon', 'shopify'])
+const LOCAL_SITES = new Set(['bestbuy', 'amazon', 'shopify', 'lego'])
 
 // Live Shopify feed state
 const shopifyFeeds = new Map()  // monitorId → { monitorName, products, baseUrl, updatedAt }
@@ -111,6 +111,7 @@ function init() {
   initEbayDarkMode()
   initHome()
   initMonitorPush()
+  initDiscordKeywords()
 }
 
 async function initNavUser() {
@@ -172,6 +173,7 @@ async function loadData() {
   if (isAdmin) {
     try { monitors = await window.api.monitors.getAll() } catch { monitors = [] }
     $('tab-monitors').style.display = ''
+    $('tab-discord').style.display  = ''
     renderMonitors()
     // Start local monitors (Best Buy / Amazon) in Electron main process
     const localMonitors = monitors.filter(m => m.active && LOCAL_SITES.has(m.site_type))
@@ -876,6 +878,12 @@ function bindEvents() {
   $('btn-add-inv').addEventListener('click',  () => openInvModal())
   $('btn-add-pkg').addEventListener('click',  () => openPkgModal())
 
+  // Discord alert log clear
+  $('btn-discord-clear')?.addEventListener('click', () => {
+    const log = $('discord-alert-log')
+    log.innerHTML = '<div id="discord-log-empty" style="font-size:13px;color:var(--text-dim);text-align:center;padding:20px 0">No alerts yet</div>'
+  })
+
   // Market Lookup
   $('btn-market-search').addEventListener('click', runMarketSearch)
   $('market-query').addEventListener('keydown', e => { if (e.key === 'Enter') runMarketSearch() })
@@ -1248,8 +1256,10 @@ function bindEvents() {
 
   window.addEventListener('resize', renderChart)
 
-  // Feed tab switching
+  // Feed tab switching + ATC size click
   document.addEventListener('click', e => {
+    const atcBtn = e.target.closest('[data-atc]')
+    if (atcBtn) { e.stopPropagation(); window.api.openExternal(atcBtn.dataset.atc); return }
     const btn = e.target.closest('.feed-tab-btn')
     if (btn?.dataset.feedId) { activeFeedMonitorId = btn.dataset.feedId; renderShopifyFeed() }
     const card = e.target.closest('.feed-product-card')
@@ -1581,7 +1591,7 @@ function renderMonitors() {
         <div class="monitor-status-dot ${active ? 'dot-active' : 'dot-paused'}"></div>
         <span class="monitor-name">${esc(m.name)}</span>
         <span class="monitor-badge ${active ? 'badge-active' : 'badge-paused'}">${active ? 'Active' : 'Paused'}</span>
-        ${m.site_type && m.site_type !== 'shopify' ? `<span class="monitor-badge monitor-site-badge monitor-site-${esc(m.site_type)}">${({walmart:'Walmart',target:'Target',amazon:'Amazon',bestbuy:'Best Buy'})[m.site_type]||m.site_type}</span>` : ''}
+        ${m.site_type && m.site_type !== 'shopify' ? `<span class="monitor-badge monitor-site-badge monitor-site-${esc(m.site_type)}">${({walmart:'Walmart',target:'Target',amazon:'Amazon',bestbuy:'Best Buy',lego:'LEGO'})[m.site_type]||m.site_type}</span>` : ''}
         ${m.product_url && m.site_type === 'shopify' ? `<span class="monitor-badge" style="background:var(--teal-light);color:var(--teal)">Product</span>` : ''}
         ${m.price_alert ? `<span class="monitor-badge" style="background:var(--orange-light);color:var(--orange)">💰 Price</span>` : ''}
         <div class="monitor-actions">
@@ -1633,7 +1643,9 @@ function renderShopifyFeed() {
     const image = p.images?.[0]?.src || ''
     const price = p.variants?.[0]?.price ? `$${parseFloat(p.variants[0].price).toFixed(2)}` : ''
     const variantBtns = (p.variants || []).map(v =>
-      `<span class="feed-variant-btn ${v.available ? 'variant-instock' : 'variant-oos'}">${esc(v.title)}</span>`
+      `<span class="feed-variant-btn ${v.available ? 'variant-instock' : 'variant-oos'}"
+        ${v.available ? `data-atc="${esc(feed.baseUrl)}/cart/${v.id}:1" title="Click to ATC"` : ''}
+      >${esc(v.title)}</span>`
     ).join('')
     const productUrl = `${feed.baseUrl}/products/${p.handle}`
     return `<div class="feed-product-card" data-url="${esc(productUrl)}">
@@ -1645,6 +1657,7 @@ function renderShopifyFeed() {
       <div class="feed-variants">${variantBtns}</div>
     </div>`
   }).join('')
+
 }
 
 // ── Toast Notifications ───────────────────────────────────────────────────────
@@ -1670,6 +1683,31 @@ function showMonitorToast({ type, monitorName, product, variants }) {
 }
 
 // Register push channels from main process (called once at init)
+async function initDiscordKeywords() {
+  const input  = $('discord-keywords-input')
+  const status = $('discord-bot-status')
+  if (!input || !window.api.selfbot) return
+
+  // Load saved keywords
+  const kws = await window.api.selfbot.getKeywords()
+  if (kws) input.value = kws
+
+  // Show bot status
+  const running = await window.api.selfbot.status()
+  status.textContent = running ? '🟢 Running' : '🔴 Offline'
+
+  $('btn-discord-keywords-save').addEventListener('click', async () => {
+    const res = await window.api.selfbot.setKeywords(input.value)
+    if (res?.ok) {
+      status.textContent = '🟡 Restarting...'
+      setTimeout(async () => {
+        const r = await window.api.selfbot.status()
+        status.textContent = r ? '🟢 Running' : '🔴 Offline'
+      }, 3000)
+    }
+  })
+}
+
 function initMonitorPush() {
   if (!window.api.onMonitorAlert) return
   window.api.onMonitorAlert(data => showMonitorToast(data))
@@ -1677,6 +1715,58 @@ function initMonitorPush() {
     shopifyFeeds.set(data.monitorId, { monitorName: data.monitorName, products: data.products, baseUrl: data.baseUrl, updatedAt: Date.now() })
     if (document.getElementById('view-monitors')?.classList.contains('active')) renderShopifyFeed()
   })
+  window.api.onDiscordKeyword(data => {
+    showDiscordKeywordToast(data)
+    const atcUrl = (data.atc_urls || [])[0]
+    if (atcUrl) window.api.openExternal(atcUrl)
+  })
+}
+
+function showDiscordKeywordToast(data) {
+  const container = $('toast-container')
+  if (!container) return
+  const toast = document.createElement('div')
+  toast.className = 'monitor-toast monitor-toast-new'
+  toast.style.setProperty('--toast-accent', '#5865f2')
+  toast.innerHTML = `
+    <div class="toast-icon">💬</div>
+    <div class="toast-body">
+      <div class="toast-label">Discord · #${esc(data.channel)} · <em>${esc(data.keyword)}</em></div>
+      <div class="toast-title">${esc(data.text.slice(0, 80))}</div>
+    </div>
+    <button class="toast-close">✕</button>`
+  toast.querySelector('.toast-close').addEventListener('click', () => toast.remove())
+  const openDiscord = () => {
+    const url = data.url || ''
+    const appUrl = url.includes('/channels/')
+      ? 'discord://-/channels/' + url.split('/channels/')[1].split('?')[0]
+      : url
+    if (appUrl) window.api.openExternal(appUrl)
+  }
+  toast.addEventListener('click', e => {
+    if (e.target.classList.contains('toast-close')) return
+    openDiscord()
+  })
+  container.appendChild(toast)
+  setTimeout(() => { toast.classList.add('toast-exit'); setTimeout(() => toast.remove(), 400) }, 10000)
+
+  // Add to alert history log
+  const log = $('discord-alert-log')
+  if (log) {
+    $('discord-log-empty')?.remove()
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const entry = document.createElement('div')
+    entry.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--card-bg);border-radius:8px;border:1px solid var(--border);cursor:pointer'
+    entry.innerHTML = `
+      <div style="font-size:18px">💬</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:#5865f2">#${esc(data.channel)} · <em style="font-style:normal">${esc(data.keyword)}</em></div>
+        <div style="font-size:12px;color:var(--text);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(data.text.slice(0, 120))}</div>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);white-space:nowrap">${time}</div>`
+    entry.addEventListener('click', openDiscord)
+    log.insertBefore(entry, log.firstChild)
+  }
 }
 
 function timeAgo(isoString) {
@@ -1694,6 +1784,7 @@ const RETAIL_HINTS = {
   target:  'e.g. https://www.target.com/p/product-name/-/A-12345678',
   amazon:  'e.g. https://www.amazon.com/dp/B09XYZ1234 (may be unreliable due to bot detection)',
   bestbuy: 'e.g. https://www.bestbuy.com/site/product-name/1234567.p',
+  lego:    'e.g. https://www.lego.com/en-us/product/set-name-12345',
 }
 
 let monitorSiteType = 'shopify'

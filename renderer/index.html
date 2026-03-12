@@ -45,6 +45,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         Monitors
       </button>
+      <button class="tab-btn tab-discord" data-view="discord" id="tab-discord" style="display:none">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Discord
+      </button>
     </div>
     <div class="nav-right">
       <button class="btn-settings" id="btn-open-settings" title="Settings">
@@ -304,6 +308,34 @@
         </div>
         <div id="shopify-feed-tabs" class="feed-tabs"></div>
         <div id="shopify-feed-grid" class="shopify-feed-grid"></div>
+      </div>
+    </div>
+
+    <!-- ── Discord View ──────────────────────────────────────────────── -->
+    <div id="view-discord" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Discord <span id="discord-bot-status" class="page-count"></span></h1>
+      </div>
+
+      <div class="table-card" style="padding:20px 24px">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px">Keyword Alerts</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Alerts fire when any keyword appears in a monitored Discord channel or embed. ATC links open automatically.</div>
+        <div style="display:flex;gap:8px;align-items:flex-start">
+          <textarea id="discord-keywords-input" class="form-input" rows="3"
+            placeholder="restock, in stock, W2C, ATC, cop..."
+            style="flex:1;resize:none;font-size:13px;padding:8px 10px"></textarea>
+          <button class="btn-add" id="btn-discord-keywords-save" style="white-space:nowrap;align-self:center">Save</button>
+        </div>
+      </div>
+
+      <div class="table-card" style="padding:20px 24px;margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">Alert History</div>
+          <button class="btn-ghost" id="btn-discord-clear" style="font-size:11px;padding:4px 10px">Clear</button>
+        </div>
+        <div id="discord-alert-log" style="display:flex;flex-direction:column;gap:8px">
+          <div id="discord-log-empty" style="font-size:13px;color:var(--text-dim);text-align:center;padding:20px 0">No alerts yet</div>
+        </div>
       </div>
     </div>
 
@@ -619,6 +651,7 @@
         <button class="mon-site-btn" data-site="target"  style="--site-color:#cc0000">🎯 Target</button>
         <button class="mon-site-btn" data-site="amazon"  style="--site-color:#ff9900">📦 Amazon</button>
         <button class="mon-site-btn" data-site="bestbuy" style="--site-color:#0046be">🔵 Best Buy</button>
+        <button class="mon-site-btn" data-site="lego"    style="--site-color:#e3000b">🧱 LEGO</button>
       </div>
 
       <!-- Shopify-only fields -->

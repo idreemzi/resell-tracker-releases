@@ -1,6 +1,29 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
+v1.9.0 — 2026-03-11
+--------------------
+ADDED
+  - Discord tab — new dedicated nav tab (admin) separating Discord alerts
+    from website monitors.
+  - Discord keyword alerts — app auto-starts the selfbot on launch and listens
+    for keyword matches in monitored Discord channels.
+  - Alert History log — every Discord keyword alert is logged in the Discord
+    tab with channel, keyword, message preview, and timestamp. Click any entry
+    to jump to it in the Discord app.
+  - ATC auto-open — when a Discord alert contains an embedded ATC link (field
+    labeled ATC, Add to Cart, Cop, Buy, or Checkout), the link opens
+    automatically in the browser.
+  - Size-click ATC on Shopify feed — click any in-stock size in the Live
+    Product Feed to instantly ATC that variant (opens store.com/cart/VARIANT:1).
+  - Neon styling for Monitors (pink) and Discord (indigo) nav tabs.
+
+FIXED
+  - Discord channel IDs (64-bit integers) no longer get corrupted when saving
+    keywords — JSON is now updated via text replacement to avoid JS float
+    precision loss.
+  - Discord alert toast now opens the Discord desktop app instead of the browser.
+
 v1.8.0 — 2026-03-11
 --------------------
 ADDED

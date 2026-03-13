@@ -1,6 +1,14 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
+v2.1.2 — 2026-03-13
+--------------------
+SECURITY
+  - shell.openExternal now validates URLs — only http/https protocols allowed,
+    blocking file:, javascript:, and other unsafe schemes.
+  - Removed real Discord credentials from server/.env.example — replaced with
+    placeholder values.
+
 v2.1.0 — 2026-03-13
 --------------------
 ADDED

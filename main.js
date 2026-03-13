@@ -1002,7 +1002,12 @@ ipcMain.handle('tracking:open', (_, trackingNumber, carrier) => {
 })
 
 ipcMain.handle('shell:openExternal', (_, url) => {
-  shell.openExternal(url)
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      shell.openExternal(url)
+    }
+  } catch { /* invalid URL, ignore */ }
 })
 
 ipcMain.handle('app:version',      () => app.getVersion())

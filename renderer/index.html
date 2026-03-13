@@ -711,6 +711,17 @@
       </div>
       <div id="settings-api-status" style="margin-top:4px;font-size:12px;font-weight:600;display:none"></div>
 
+      <!-- Cloud Sync -->
+      <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Cloud Sync</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Paste your Supabase User ID to sync inventory, sales and packages to the web dashboard.</div>
+        <input type="text" id="settings-supabase-uid" class="form-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="width:100%;margin-bottom:8px;font-family:monospace;font-size:12px" />
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn-add" id="btn-migrate-cloud" style="font-size:12px;padding:7px 14px;background:var(--teal)">Migrate Existing Data →</button>
+          <span id="sync-status" style="font-size:12px;font-weight:600"></span>
+        </div>
+      </div>
+
       <div style="display:flex;gap:8px;margin-top:16px">
         <button class="settings-info-btn" id="btn-show-features">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -1105,17 +1116,26 @@
     <div class="modal-body info-modal-body">
 
       <div class="info-section">
-        <div class="info-section-title info-version">v1.9.0 — Latest</div>
+        <div class="info-section-title info-version">v2.0.0 — Latest</div>
+        <ul class="info-list">
+          <li>Web dashboard — access your inventory, sales, and packages from any device at any time</li>
+          <li>Cloud sync — desktop and web stay in sync automatically, both directions</li>
+          <li>Photos sync to cloud — item photos added on desktop upload to cloud and display on web</li>
+          <li>Add and edit items from the web dashboard — changes appear on desktop within 15 seconds</li>
+          <li>Discord login — secure access to the web dashboard via your Discord account</li>
+          <li>Admin panel — approve users and manage client access from the web</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title info-version">v1.9.0</div>
         <ul class="info-list">
           <li>Nike SNKRS monitor with live countdown, draw/FCFS detection, size buttons, and StockX/GOAT search links</li>
           <li>Aggressive in-app Nike alert — sound × 3, window flash, persistent toast with size-to-cart buttons</li>
-          <li>Nike feed now filters to only show drops within 2 hours of launch — no more stale sold-out products</li>
-          <li>Boost mode — polling tightens to every 10s within 5 min of a Nike drop going live</li>
           <li>Funko monitor — new product and restock alerts with price drop detection</li>
           <li>Discord selfbot — keyword monitoring in any channel you're in</li>
-          <li>Cook Group Feed — subscribe to a channel by ID and see every message live in-app, ATC links auto-highlighted</li>
+          <li>Cook Group Feed — subscribe to a channel by ID and see every message live in-app</li>
           <li>Proxy manager — add, test, and clean proxies</li>
-          <li>Features and What's New modals added to Settings</li>
         </ul>
       </div>
 

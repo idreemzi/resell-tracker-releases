@@ -1,6 +1,6 @@
 {
   "name": "resell-tracker",
-  "version": "1.9.0",
+  "version": "2.0.0",
   "description": "Track your resell items",
   "main": "main.js",
   "scripts": {
@@ -48,6 +48,7 @@
     }
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.99.1",
     "discord.js-selfbot-v13": "^3.7.1",
     "electron-updater": "^6.1.7"
   },

@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#e4d5bc" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#080810" media="(prefers-color-scheme: dark)" />
+  <title>Resell Tracker — Add Item</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    /* ── Config: change these to match your Supabase project ── */
+    /* (Done in JS below — this block is just a reminder)       */
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #f0e6d3;
+      --surface:    #ffffff;
+      --surface2:   #f7f0e6;
+      --border:     #e0d4c0;
+      --nav:        #e4d5bc;
+      --text:       #1a1a1a;
+      --muted:      #6b6563;
+      --dim:        #a09890;
+      --accent:     #0d9488;
+      --accent-dk:  #0a7a70;
+      --accent-lt:  #ccfbf1;
+      --red:        #ef4444;
+      --green:      #22c55e;
+      --radius:     12px;
+      --radius-sm:  8px;
+      --shadow:     0 2px 12px rgba(0,0,0,0.08);
+      --shadow-lg:  0 8px 32px rgba(0,0,0,0.14);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:         #080810;
+        --surface:    #0f0f1a;
+        --surface2:   #14141f;
+        --border:     #252535;
+        --nav:        #0a0a14;
+        --text:       #e8e8f5;
+        --muted:      #7878a0;
+        --dim:        #44445a;
+        --accent:     #00d4ff;
+        --accent-dk:  #00bfea;
+        --accent-lt:  rgba(0,212,255,0.12);
+        --red:        #ff3366;
+        --green:      #00ff88;
+        --shadow:     0 2px 16px rgba(0,0,0,0.6);
+        --shadow-lg:  0 8px 40px rgba(0,0,0,0.8);
+      }
+    }
+
+    html, body {
+      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 16px;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--nav);
+      border-bottom: 1px solid var(--border);
+      padding: 0 20px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .header { background: var(--nav); border-bottom-color: rgba(255,255,255,0.07); }
+    }
+
+    .header-title {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .header-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--accent-lt);
+      color: var(--accent);
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── Page ────────────────────────────────────────────────── */
+    .page {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 20px 16px 48px;
+    }
+
+    /* ── Photo Upload ─────────────────────────────────────────── */
+    .photo-zone {
+      position: relative;
+      width: 100%;
+      height: 220px;
+      border-radius: var(--radius);
+      border: 2px dashed var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      cursor: pointer;
+      overflow: hidden;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 20px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .photo-zone:active { background: var(--surface2); }
+    .photo-zone.has-photo { border-style: solid; border-color: var(--accent); }
+
+    .photo-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .photo-zone img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: calc(var(--radius) - 2px);
+    }
+
+    .photo-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .photo-zone.has-photo .photo-placeholder { opacity: 0; }
+
+    .photo-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--accent-lt);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .photo-icon svg { color: var(--accent); }
+
+    .photo-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .photo-sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .photo-remove {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.55);
+      border: none;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .photo-zone.has-photo .photo-remove { display: flex; }
+
+    /* ── Card ────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    /* ── Fields ──────────────────────────────────────────────── */
+    .field {
+      margin-bottom: 14px;
+    }
+
+    .field:last-child { margin-bottom: 0; }
+
+    .field-row {
+      display: grid;
+      gap: 12px;
+    }
+
+    .field-row.col2 { grid-template-columns: 1fr 1fr; }
+    .field-row.col3 { grid-template-columns: 2fr 1fr 1fr; }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+      letter-spacing: 0.2px;
+    }
+
+    label .req {
+      color: var(--accent);
+      margin-left: 2px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 16px; /* prevents iOS zoom */
+      font-family: inherit;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-lt);
+    }
+
+    input::placeholder, textarea::placeholder { color: var(--dim); }
+
+    input[type="number"] { -moz-appearance: textfield; }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+    .prefix-wrap {
+      position: relative;
+    }
+
+    .prefix-wrap .prefix {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 16px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .prefix-wrap input { padding-left: 26px; }
+
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6563' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
+    }
+
+    /* ── Submit ──────────────────────────────────────────────── */
+    .btn-submit {
+      width: 100%;
+      padding: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: inherit;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      letter-spacing: 0.2px;
+      transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .btn-submit:active { transform: scale(0.98); }
+
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .btn-submit { box-shadow: 0 0 16px rgba(0,212,255,0.35); }
+      .btn-submit:hover { background: var(--accent-dk); box-shadow: 0 0 24px rgba(0,212,255,0.5); }
+    }
+
+    @media (prefers-color-scheme: light) {
+      .btn-submit:hover { background: var(--accent-dk); }
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    .btn-submit.loading .spinner { display: block; }
+    .btn-submit.loading .btn-text { opacity: 0.7; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast / Banner ──────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 20px;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 260px;
+      max-width: calc(100vw - 32px);
+      z-index: 999;
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s;
+      opacity: 0;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    .toast-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .toast.success .toast-icon { background: rgba(34,197,94,0.15); color: var(--green); }
+    .toast.error   .toast-icon { background: rgba(239,68,68,0.12);  color: var(--red); }
+
+    .toast-body { flex: 1; }
+    .toast-title { font-size: 14px; font-weight: 700; }
+    .toast-msg   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Config warning ──────────────────────────────────────── */
+    .config-warning {
+      background: rgba(239,68,68,0.08);
+      border: 1.5px solid rgba(239,68,68,0.3);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: var(--red);
+      line-height: 1.5;
+      display: none;
+    }
+
+    .config-warning.show { display: block; }
+    .config-warning code {
+      background: rgba(239,68,68,0.12);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────── -->
+<header class="header">
+  <span class="header-title">Resell Tracker</span>
+  <span class="header-badge">Add Inventory</span>
+</header>
+
+<!-- ── Page ────────────────────────────────────────────────── -->
+<div class="page">
+
+  <!-- Config warning (shown if keys not set) -->
+  <div class="config-warning" id="cfg-warn">
+    ⚠️ Supabase not configured. Open this file and set your
+    <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> at the top of the script.
+  </div>
+
+  <!-- Photo -->
+  <div class="photo-zone" id="photo-zone">
+    <input type="file" id="photo-input" accept="image/*" capture="environment" />
+    <div class="photo-placeholder">
+      <div class="photo-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+      </div>
+      <span class="photo-label">Tap to add photo</span>
+      <span class="photo-sub">Camera or photo library</span>
+    </div>
+    <img id="photo-preview" src="" alt="" style="display:none" />
+    <button type="button" class="photo-remove" id="photo-remove" onclick="removePhoto(event)">✕</button>
+  </div>
+
+  <form id="inv-form" onsubmit="handleSubmit(event)">
+
+    <!-- Product Details -->
+    <div class="card">
+      <div class="card-title">Product Details</div>
+
+      <div class="field">
+        <label>Product Name <span class="req">*</span></label>
+        <input type="text" id="f-name" placeholder="e.g. Jordan 1 Retro High OG Bred" autocomplete="off" required />
+      </div>
+
+      <div class="field field-row col2">
+        <div>
+          <label>Size</label>
+          <input type="text" id="f-size" placeholder="e.g. 10.5" autocomplete="off" />
+        </div>
+        <div>
+          <label>Qty</label>
+          <input type="number" id="f-qty" placeholder="1" min="1" step="1" value="1" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Store / Source</label>
+        <input type="text" id="f-store" placeholder="e.g. Nike SNKRS, GOAT, Goodwill" autocomplete="off" />
+      </div>
+    </div>
+
+    <!-- Pricing -->
+    <div class="card">
+      <div class="card-title">Pricing</div>
+
+      <div class="field field-row col2">
+        <div>
+          <label>Purchase Price <span class="req">*</span></label>
+          <div class="prefix-wrap">
+            <span class="prefix">$</span>
+            <input type="number" id="f-buy" placeholder="0.00" min="0" step="0.01" required />
+          </div>
+        </div>
+        <div>
+          <label>Est. Resell</label>
+          <div class="prefix-wrap">
+            <span class="prefix">$</span>
+            <input type="number" id="f-resell" placeholder="0.00" min="0" step="0.01" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="card">
+      <div class="card-title">Notes</div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="f-notes" rows="3" placeholder="Condition, colourway, deadstock, any extra details…" style="resize:none"></textarea>
+      </div>
+    </div>
+
+    <button type="submit" class="btn-submit" id="submit-btn">
+      <div class="spinner"></div>
+      <span class="btn-text">Add to Inventory</span>
+    </button>
+
+  </form>
+</div>
+
+<!-- ── Toast ────────────────────────────────────────────────── -->
+<div class="toast" id="toast">
+  <div class="toast-icon" id="toast-icon"></div>
+  <div class="toast-body">
+    <div class="toast-title" id="toast-title"></div>
+    <div class="toast-msg"   id="toast-msg"></div>
+  </div>
+</div>
+
+<script>
+  // ── ⚙️  CONFIGURATION — paste your Supabase credentials here ──────────────
+  const SUPABASE_URL      = 'https://lpfoqbmtsxfylkmapxfj.supabase.co'       // e.g. https://abcxyz.supabase.co
+  const SUPABASE_ANON_KEY = 'sb_publishable_uqGOOWhBan8ZI4knzZvaVw_OKFiAMRP'  // your project's anon/public key
+  const PHOTO_BUCKET      = 'inventory-photos'         // storage bucket name (create this in Supabase)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  const CONFIGURED = SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY'
+
+  let supabase = null
+  if (CONFIGURED) {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  } else {
+    document.getElementById('cfg-warn').classList.add('show')
+  }
+
+  // ── Photo handling ───────────────────────────────────────────────────────
+  let photoFile = null
+
+  document.getElementById('photo-input').addEventListener('change', e => {
+    const file = e.target.files[0]
+    if (!file) return
+    photoFile = file
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const preview = document.getElementById('photo-preview')
+      preview.src = ev.target.result
+      preview.style.display = 'block'
+      document.getElementById('photo-zone').classList.add('has-photo')
+    }
+    reader.readAsDataURL(file)
+  })
+
+  function removePhoto(e) {
+    e.stopPropagation()
+    e.preventDefault()
+    photoFile = null
+    const preview = document.getElementById('photo-preview')
+    preview.src = ''
+    preview.style.display = 'none'
+    document.getElementById('photo-zone').classList.remove('has-photo')
+    document.getElementById('photo-input').value = ''
+  }
+
+  // ── Compress image before upload ─────────────────────────────────────────
+  function compressImage(file, maxWidth = 900, quality = 0.82) {
+    return new Promise(resolve => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const scale = Math.min(1, maxWidth / img.width)
+        const canvas = document.createElement('canvas')
+        canvas.width  = Math.round(img.width  * scale)
+        canvas.height = Math.round(img.height * scale)
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality)
+      }
+      img.src = url
+    })
+  }
+
+  // ── Upload photo to Supabase Storage ─────────────────────────────────────
+  async function uploadPhoto(file) {
+    const compressed = await compressImage(file)
+    const ext  = 'jpg'
+    const name = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const { data, error } = await supabase.storage
+      .from(PHOTO_BUCKET)
+      .upload(name, compressed, { contentType: 'image/jpeg', upsert: false })
+    if (error) throw error
+    const { data: { publicUrl } } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(name)
+    return publicUrl
+  }
+
+  // ── Toast helper ─────────────────────────────────────────────────────────
+  let toastTimer = null
+  function showToast(type, title, msg) {
+    const toast = document.getElementById('toast')
+    const icon  = document.getElementById('toast-icon')
+    toast.className = `toast ${type}`
+    document.getElementById('toast-title').textContent = title
+    document.getElementById('toast-msg').textContent   = msg
+    icon.innerHTML = type === 'success'
+      ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`
+      : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
+    clearTimeout(toastTimer)
+    // Force reflow so transition fires
+    toast.classList.remove('show')
+    void toast.offsetWidth
+    toast.classList.add('show')
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 4000)
+  }
+
+  // ── Submit ───────────────────────────────────────────────────────────────
+  async function handleSubmit(e) {
+    e.preventDefault()
+
+    if (!CONFIGURED) {
+      showToast('error', 'Not configured', 'Add your Supabase credentials to the file.')
+      return
+    }
+
+    const btn = document.getElementById('submit-btn')
+    btn.disabled = true
+    btn.classList.add('loading')
+    document.querySelector('.btn-text').textContent = 'Saving…'
+
+    try {
+      // Upload photo if present
+      let photoUrl = null
+      if (photoFile) {
+        try {
+          photoUrl = await uploadPhoto(photoFile)
+        } catch (err) {
+          console.warn('Photo upload failed, saving without photo:', err.message)
+        }
+      }
+
+      // Build item (matches desktop app schema exactly)
+      const item = {
+        productName:     document.getElementById('f-name').value.trim(),
+        size:            document.getElementById('f-size').value.trim()   || null,
+        qty:             parseInt(document.getElementById('f-qty').value)  || 1,
+        store:           document.getElementById('f-store').value.trim()  || null,
+        buyPrice:        parseFloat(document.getElementById('f-buy').value) || 0,
+        estimatedResell: document.getElementById('f-resell').value !== ''
+                           ? parseFloat(document.getElementById('f-resell').value)
+                           : null,
+        notes:           document.getElementById('f-notes').value.trim()  || null,
+        photo:           photoUrl,
+        source:          'mobile',
+        createdAt:       new Date().toISOString(),
+        updatedAt:       new Date().toISOString(),
+      }
+
+      const { error } = await supabase.from('inventory').insert(item)
+      if (error) throw error
+
+      // Success — reset form
+      showToast('success', 'Item added!', `${item.productName} saved to inventory.`)
+      document.getElementById('inv-form').reset()
+      removePhoto({ stopPropagation: () => {}, preventDefault: () => {} })
+      document.getElementById('f-qty').value = 1
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+
+    } catch (err) {
+      console.error(err)
+      showToast('error', 'Save failed', err.message || 'Check your connection and try again.')
+    } finally {
+      btn.disabled = false
+      btn.classList.remove('loading')
+      document.querySelector('.btn-text').textContent = 'Add to Inventory'
+    }
+  }
+</script>
+</body>
+</html>

@@ -36,6 +36,98 @@ function resolveViaDoh(hostname) {
 const DISCORD = require('./discord-config')
 const { autoUpdater } = require('electron-updater')
 
+// ── Supabase sync ──────────────────────────────────────────────────────────────
+const SUPABASE_URL      = 'https://lpfoqbmtsxfylkmapxfj.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_secret_3bTNKSbIXdTDnHcHKsSQ_Q_tcPMbP6N'
+let _sbClient = null
+function getSb() {
+  if (!_sbClient) {
+    const { createClient } = require('@supabase/supabase-js')
+    _sbClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  }
+  return _sbClient
+}
+function sbSync(fn) {
+  // Fire-and-forget Supabase write — never blocks local operation
+  Promise.resolve().then(fn).catch(e => console.log('[supabase] sync error:', e.message))
+}
+
+// Only send columns that exist in each Supabase table
+const SB_COLUMNS = {
+  inventory: ['id','user_id','productName','size','qty','store','buyPrice','estimatedResell','notes','photo','source','createdAt'],
+  sales:     ['id','user_id','productName','size','qty','buyPrice','sellPrice','platform','date','notes','fees','createdAt'],
+  packages:  ['id','user_id','nickname','trackingNumber','carrier','status','description','createdAt'],
+}
+function sbPick(name, row) {
+  const cols = SB_COLUMNS[name]
+  if (!cols) return row
+  const out = {}
+  for (const k of cols) if (row[k] !== undefined) out[k] = row[k]
+  return out
+}
+
+async function uploadLocalPhoto(filePath, itemId) {
+  try {
+    if (!filePath || filePath.startsWith('http')) return filePath // already a URL
+    if (!fs.existsSync(filePath)) return filePath
+    const fileData = fs.readFileSync(filePath)
+    const ext      = path.extname(filePath) || '.jpg'
+    const name     = `${itemId}${ext}`
+    const uid      = getSettings().supabaseUserId
+    const storagePath = `${uid}/${name}`
+    const { error } = await getSb().storage.from('inventory-photos').upload(storagePath, fileData, { contentType: 'image/jpeg', upsert: true })
+    if (error) { console.log('[photo] upload error:', error.message); return filePath }
+    const { data } = getSb().storage.from('inventory-photos').getPublicUrl(storagePath)
+    return data.publicUrl
+  } catch (e) {
+    console.log('[photo] error:', e.message)
+    return filePath
+  }
+}
+
+function startRealtimeSync() {
+  const uid = getSettings().supabaseUserId
+  if (!uid) return
+  // Poll every 15 seconds for changes from web
+  setInterval(() => syncFromSupabase(), 15000)
+  console.log('[sync] polling every 15s')
+}
+
+async function syncFromSupabase() {
+  const uid = getSettings().supabaseUserId
+  if (!uid) return
+  try {
+    const data = readData()
+    let changed = false
+    for (const name of ['inventory', 'sales', 'packages']) {
+      const { data: rows, error } = await getSb().from(name).select('*').eq('user_id', uid)
+      if (error) { console.log(`[sync] ${name} fetch error:`, error.message); continue }
+      const remoteIds = new Set(rows.map(r => r.id))
+      const localIds  = new Set(data[name].map(r => r.id))
+      // Add new items from Supabase
+      const newRows = rows.filter(r => !localIds.has(r.id))
+      if (newRows.length) {
+        data[name].push(...newRows)
+        changed = true
+        console.log(`[sync] pulled ${newRows.length} new ${name} from Supabase`)
+      }
+      // Remove items deleted on web
+      const before = data[name].length
+      data[name] = data[name].filter(r => remoteIds.has(r.id))
+      if (data[name].length !== before) {
+        changed = true
+        console.log(`[sync] removed ${before - data[name].length} deleted ${name}`)
+      }
+    }
+    if (changed) {
+      writeData(data)
+      mainWindow?.webContents.send('data:reloaded')
+    }
+  } catch (e) {
+    console.log('[sync] error:', e.message)
+  }
+}
+
 let mainWindow
 let dataPath
 let photosDir
@@ -127,6 +219,9 @@ app.whenReady().then(() => {
   photosDir   = path.join(userDataPath, 'photos')
   if (!fs.existsSync(photosDir)) fs.mkdirSync(photosDir, { recursive: true })
   createWindow()
+  // Pull from Supabase on startup then listen for live changes
+  syncFromSupabase()
+  startRealtimeSync()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -180,19 +275,42 @@ function registerCollection(name) {
   ipcMain.handle(`${name}:getAll`, () => readData()[name])
 
   ipcMain.handle(`${name}:add`, (_, item) => {
-    const data = readData()
+    const data    = readData()
     const newItem = { ...item, id: genId(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
     data[name].push(newItem)
     writeData(data)
+    sbSync(async () => {
+      const uid = getSettings().supabaseUserId
+      if (!uid) return
+      let row = { ...newItem, user_id: uid }
+      if (name === 'inventory' && row.photo && !row.photo.startsWith('http')) {
+        const url = await uploadLocalPhoto(row.photo, row.id)
+        if (url !== row.photo) {
+          row.photo = url
+          const d = readData()
+          d[name] = d[name].map(x => x.id === row.id ? { ...x, photo: url } : x)
+          writeData(d)
+          mainWindow?.webContents.send('data:reloaded')
+        }
+      }
+      const { error } = await getSb().from(name).insert(sbPick(name, row))
+      if (error) console.log(`[supabase] ${name}:add error:`, error.message)
+    })
     return newItem
   })
 
   ipcMain.handle(`${name}:update`, (_, id, updates) => {
     const data = readData()
-    const idx = data[name].findIndex(i => i.id === id)
+    const idx  = data[name].findIndex(i => i.id === id)
     if (idx === -1) return null
     data[name][idx] = { ...data[name][idx], ...updates, updatedAt: new Date().toISOString() }
     writeData(data)
+    sbSync(async () => {
+      const uid = getSettings().supabaseUserId
+      if (!uid) return
+      const { error } = await getSb().from(name).update(sbPick(name, { ...updates, updatedAt: new Date().toISOString() })).eq('id', id)
+      if (error) console.log(`[supabase] ${name}:update error:`, error.message)
+    })
     return data[name][idx]
   })
 
@@ -200,6 +318,12 @@ function registerCollection(name) {
     const data = readData()
     data[name] = data[name].filter(i => i.id !== id)
     writeData(data)
+    sbSync(async () => {
+      const uid = getSettings().supabaseUserId
+      if (!uid) return
+      const { error } = await getSb().from(name).delete().eq('id', id)
+      if (error) console.log(`[supabase] ${name}:delete error:`, error.message)
+    })
     return true
   })
 }
@@ -394,6 +518,35 @@ function saveSettings(settings) {
 
 ipcMain.handle('settings:get', () => getSettings())
 ipcMain.handle('settings:set', (_, settings) => { saveSettings(settings); return true })
+
+ipcMain.handle('data:migrateToSupabase', async () => {
+  console.log('[migrate] handler called')
+  const uid = getSettings().supabaseUserId
+  console.log('[migrate] uid:', uid)
+  if (!uid) return { error: 'No Supabase User ID configured. Add it in Settings → Cloud Sync.' }
+  const data    = readData()
+  const results = {}
+  for (const name of ['inventory', 'sales', 'packages']) {
+    const rawRows = (data[name] || [])
+    // Upload local photos to Supabase Storage
+    if (name === 'inventory') {
+      for (const r of rawRows) {
+        if (r.photo && !r.photo.startsWith('http')) {
+          const url = await uploadLocalPhoto(r.photo, r.id)
+          if (url !== r.photo) { r.photo = url; data[name] = data[name].map(x => x.id === r.id ? { ...x, photo: url } : x) }
+        }
+      }
+      writeData(data)
+    }
+    const rows = rawRows.map(r => sbPick(name, { ...r, user_id: uid }))
+    console.log(`[migrate] ${name}: ${rows.length} rows`)
+    if (!rows.length) { results[name] = 0; continue }
+    const { error } = await getSb().from(name).upsert(rows, { onConflict: 'id' })
+    console.log(`[migrate] ${name} result:`, error ? error.message : 'ok')
+    results[name] = error ? `error: ${error.message} [${error.code}]` : rows.length
+  }
+  return results
+})
 
 // ── Proxy Manager ─────────────────────────────────────────────────────────────
 function getProxies() {

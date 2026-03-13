@@ -1081,6 +1081,30 @@ function bindEvents() {
   $('btn-settings-cancel').addEventListener('click', closeSettingsModal)
   $('btn-settings-save').addEventListener('click', saveSettings)
 
+  $('btn-migrate-cloud').addEventListener('click', async () => {
+    const uid = ($('settings-supabase-uid')?.value || '').trim()
+    if (!uid) { alert('Please enter your Supabase User ID first.'); return }
+    // Save the UID first so the main process can use it
+    const existing = await window.api.getSettings()
+    await window.api.setSettings({ ...existing, supabaseUserId: uid })
+    const btn = $('btn-migrate-cloud')
+    btn.disabled = true
+    btn.textContent = 'Migrating…'
+    const result = await window.api.migrateToSupabase()
+    btn.disabled = false
+    btn.textContent = 'Migrate Existing Data →'
+    if (result.error) {
+      alert(result.error)
+    } else {
+      const inv  = result.inventory || 0
+      const sal  = result.sales     || 0
+      const pkg  = result.packages  || 0
+      alert(`Synced: ${inv} inventory, ${sal} sales, ${pkg} packages`)
+      $('sync-status').textContent = '✓ Sync enabled'
+      $('sync-status').style.color = 'var(--green)'
+    }
+  })
+
   $('btn-show-features').addEventListener('click', () => { $('modal-features').style.display = 'flex' })
   $('modal-features-close').addEventListener('click', () => { $('modal-features').style.display = 'none' })
   $('modal-features').addEventListener('click', e => { if (e.target === $('modal-features')) $('modal-features').style.display = 'none' })
@@ -1459,6 +1483,19 @@ async function openSettingsModal() {
     }
   }
 
+  // Pre-fill Supabase UID
+  if ($('settings-supabase-uid')) {
+    $('settings-supabase-uid').value = settings.supabaseUserId || ''
+    const status = $('sync-status')
+    if (settings.supabaseUserId) {
+      status.textContent = '✓ Sync enabled'
+      status.style.color = 'var(--green)'
+    } else {
+      status.textContent = 'Not configured'
+      status.style.color = 'var(--text-dim)'
+    }
+  }
+
   $('modal-settings').style.display = 'flex'
 }
 
@@ -1572,7 +1609,8 @@ function initProfileModal() {
 
 async function saveSettings() {
   const existing = await window.api.getSettings()
-  await window.api.setSettings({ ...existing })
+  const uid = ($('settings-supabase-uid')?.value || '').trim()
+  await window.api.setSettings({ ...existing, supabaseUserId: uid || existing.supabaseUserId || '' })
   closeSettingsModal()
 }
 
@@ -2301,6 +2339,9 @@ function showNikeAlert(data) {
 }
 
 function initMonitorPush() {
+  if (window.api.onDataReloaded) {
+    window.api.onDataReloaded(() => loadData())
+  }
   if (!window.api.onMonitorAlert) return
   window.api.onMonitorAlert(data => {
     if (data.isNike) showNikeAlert(data)

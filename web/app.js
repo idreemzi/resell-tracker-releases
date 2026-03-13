@@ -1,12 +1,12 @@
-// ── Config ────────────────────────────────────────────────────────────────────
+// -- Config --------------------------------------------------------------------
 const SUPABASE_URL      = 'https://lpfoqbmtsxfylkmapxfj.supabase.co'
 const SUPABASE_ANON_KEY = 'sb_publishable_uqGOOWhBan8ZI4knzZvaVw_OKFiAMRP'
 const PHOTO_BUCKET      = 'inventory-photos'
 
-// ── Supabase ──────────────────────────────────────────────────────────────────
+// -- Supabase ------------------------------------------------------------------
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// -- State ---------------------------------------------------------------------
 let currentUser    = null
 let currentProfile = null
 let inventory      = []
@@ -18,10 +18,12 @@ let pendingPhoto   = null        // File object waiting to upload
 let analyticsYear  = new Date().getFullYear()
 let chartMonthly   = null
 let chartPlatform  = null
+let chartHomeMini  = null
 let adminViewUserId = null
 let approvalPoller  = null
+let _saving         = false  // prevent double-submit
 
-// ── Platform colors ───────────────────────────────────────────────────────────
+// -- Platform colors -----------------------------------------------------------
 const PLATFORM_META = {
   stockx:   { bg: '#13cb75', text: '#fff' },
   goat:     { bg: '#000',    text: '#fff' },
@@ -35,35 +37,211 @@ const PLATFORM_META = {
   mercari:  { bg: '#973ae5', text: '#fff' },
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+// -- Cursor glow ---------------------------------------------------------------
+document.addEventListener('mousemove', e => {
+  const g = document.getElementById('cursor-glow')
+  if (g) { g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px' }
+})
+
+// -- Card spotlight ------------------------------------------------------------
+function initSpotlights() {
+  document.querySelectorAll('.stat-card').forEach(card => {
+    // Add spin-border element if not present
+    if (!card.querySelector('.spin-border')) {
+      const sb = document.createElement('div')
+      sb.className = 'spin-border'
+      card.insertBefore(sb, card.firstChild)
+    }
+    card.addEventListener('mousemove', e => {
+      const r  = card.getBoundingClientRect()
+      const sx = ((e.clientX - r.left) / r.width  * 100).toFixed(1) + '%'
+      const sy = ((e.clientY - r.top)  / r.height * 100).toFixed(1) + '%'
+      const sp = card.querySelector('.spotlight')
+      if (sp) sp.style.background = `radial-gradient(circle at ${sx} ${sy}, rgba(255,255,255,0.07) 0%, transparent 55%)`
+    })
+  })
+}
+
+// -- Number counter animation --------------------------------------------------
+function animateCounter(id, to, isCurrency = true, isPercent = false, decimals = 2) {
+  const el = document.getElementById(id)
+  if (!el) return
+  const prev = parseFloat(el.dataset.animVal ?? 'NaN')
+  if (!isNaN(prev) && Math.abs(prev - to) < 0.005) return
+  el.dataset.animVal = to
+  const from     = isNaN(prev) ? 0 : prev
+  const start    = performance.now()
+  const duration = 900
+  const tick = now => {
+    const p      = Math.min((now - start) / duration, 1)
+    const eased  = 1 - Math.pow(1 - p, 4)           // ease-out quart
+    const val    = from + (to - from) * eased
+    if (isPercent)       el.textContent = val.toFixed(decimals) + '%'
+    else if (isCurrency) el.textContent = (val < 0 ? '-$' : '$') + Math.abs(val).toFixed(decimals)
+    else                 el.textContent = Math.round(val)
+    if (p < 1) requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
+// -- Live clock ----------------------------------------------------------------
+let clockTimer = null
+function startClock() {
+  clearInterval(clockTimer)
+  const tick = () => {
+    const t = document.getElementById('hero-time')
+    if (t) t.textContent = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+  }
+  tick()
+  clockTimer = setInterval(tick, 1000)
+}
+
+// -- 3D Card Tilt --------------------------------------------------------------
+function init3DTilt() {
+  document.querySelectorAll('.stat-card').forEach(card => {
+    card.addEventListener('mouseenter', () => {
+      card.style.transition = 'transform 0.08s linear, border-color 0.2s, box-shadow 0.2s'
+    })
+    card.addEventListener('mousemove', e => {
+      const r = card.getBoundingClientRect()
+      const x = (e.clientX - r.left) / r.width  - 0.5
+      const y = (e.clientY - r.top)  / r.height - 0.5
+      card.style.transform = `perspective(700px) rotateY(${x * 14}deg) rotateX(${-y * 14}deg) translateZ(12px) scale(1.01)`
+    })
+    card.addEventListener('mouseleave', () => {
+      card.style.transition = 'transform 0.7s cubic-bezier(0.34,1.56,0.64,1), border-color 0.2s, box-shadow 0.2s'
+      card.style.transform = ''
+      setTimeout(() => { card.style.transition = '' }, 700)
+    })
+  })
+}
+
+// -- Particle Field ------------------------------------------------------------
+function initParticles() {
+  const canvas = document.getElementById('particles')
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+
+  const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight }
+  resize()
+  window.addEventListener('resize', resize)
+
+  const COUNT = 65
+  const pts = Array.from({ length: COUNT }, () => ({
+    x:  Math.random() * canvas.width,
+    y:  Math.random() * canvas.height,
+    r:  Math.random() * 1.2 + 0.4,
+    vx: (Math.random() - 0.5) * 0.25,
+    vy: (Math.random() - 0.5) * 0.25,
+    o:  Math.random() * 0.35 + 0.08,
+  }))
+
+  const draw = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    pts.forEach(p => {
+      p.x += p.vx; p.y += p.vy
+      if (p.x < 0) p.x = canvas.width
+      if (p.x > canvas.width) p.x = 0
+      if (p.y < 0) p.y = canvas.height
+      if (p.y > canvas.height) p.y = 0
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
+      ctx.fillStyle = `rgba(165,180,252,${p.o})`
+      ctx.fill()
+    })
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const dx = pts[i].x - pts[j].x
+        const dy = pts[i].y - pts[j].y
+        const d  = Math.sqrt(dx * dx + dy * dy)
+        if (d < 130) {
+          ctx.beginPath()
+          ctx.moveTo(pts[i].x, pts[i].y)
+          ctx.lineTo(pts[j].x, pts[j].y)
+          ctx.strokeStyle = `rgba(99,102,241,${0.07 * (1 - d / 130)})`
+          ctx.lineWidth = 0.6
+          ctx.stroke()
+        }
+      }
+    }
+    requestAnimationFrame(draw)
+  }
+  draw()
+}
+
+// -- Typewriter ----------------------------------------------------------------
+let greetingTyped = false
+function typewrite(el, text, speed = 38) {
+  if (!el) return
+  el.textContent = ''
+  let i = 0
+  const go = () => { if (i < text.length) { el.textContent += text[i++]; setTimeout(go, speed) } }
+  go()
+}
+
+// -- Button Ripple -------------------------------------------------------------
+function initRipple() {
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('.btn-add, .btn-primary, .btn-secondary, .btn-danger, .btn-discord')
+    if (!btn) return
+    const r = btn.getBoundingClientRect()
+    const rip = document.createElement('span')
+    rip.className = 'ripple'
+    rip.style.left = (e.clientX - r.left) + 'px'
+    rip.style.top  = (e.clientY - r.top)  + 'px'
+    btn.appendChild(rip)
+    setTimeout(() => rip.remove(), 700)
+  })
+}
+
+// -- Boot ----------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', async () => {
   applyTheme()
   updateThemeIcon()
   setupKeyboard()
   setupPhotoZone()
+  initSpotlights()
+  init3DTilt()
+  initParticles()
+  initRipple()
 
   // Set today as default sale date
   document.getElementById('s-date').value = today()
   document.getElementById('year-label').textContent = analyticsYear
 
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
-      if (session) {
-        await handleSession(session)
-      } else {
-        showScreen('screen-login')
-      }
+  // Check for existing session first
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      await handleSession(session);
+    } else {
+      showScreen('screen-login');
     }
-    if (event === 'SIGNED_OUT') {
-      currentUser = currentProfile = null
-      inventory = sales = packages = []
-      clearInterval(approvalPoller)
-      showScreen('screen-login')
+  } catch (err) {
+    console.error('[auth:init]', err);
+    showScreen('screen-login');
+  }
+
+  // Listen for future auth changes (sign-in, sign-out)
+  sb.auth.onAuthStateChange(async (event, session) => {
+    try {
+      if (event === 'SIGNED_IN' && session) {
+        await handleSession(session);
+      }
+      if (event === 'SIGNED_OUT') {
+        currentUser = currentProfile = null;
+        inventory = sales = packages = [];
+        clearInterval(approvalPoller);
+        showScreen('screen-login');
+      }
+    } catch (err) {
+      console.error('[auth]', err);
+      showScreen('screen-login');
     }
   })
 })
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// -- Auth ----------------------------------------------------------------------
 async function loginWithDiscord() {
   const btn = document.getElementById('btn-discord-login')
   btn.disabled = true
@@ -88,6 +266,7 @@ async function handleSession(session) {
     await new Promise(r => setTimeout(r, 1200))
     const retry = await fetchProfile(currentUser.id)
     if (!retry) {
+      showScreen('screen-login')
       showLoginError('Could not load profile. Try refreshing.')
       return
     }
@@ -104,6 +283,12 @@ async function handleSession(session) {
 
   clearInterval(approvalPoller)
   await bootApp()
+
+  // Show onboarding for first-time users
+  const obKey = `onboarded_${currentUser.id}`
+  if (!localStorage.getItem(obKey)) {
+    document.getElementById('onboarding-overlay').style.display = 'flex'
+  }
 }
 
 async function fetchProfile(userId) {
@@ -140,7 +325,7 @@ function showLoginError(msg) {
   el.style.display = 'block'
 }
 
-// ── App Boot ──────────────────────────────────────────────────────────────────
+// -- App Boot ------------------------------------------------------------------
 async function bootApp() {
   renderUserHeader()
   if (currentProfile.is_admin) {
@@ -149,6 +334,7 @@ async function bootApp() {
   await loadAllData()
   showScreen('screen-app')
   switchView('home')
+  startClock()
   startRealtimeListeners()
 }
 
@@ -157,6 +343,8 @@ function renderUserHeader() {
   document.getElementById('user-avatar').src = avatar
   document.getElementById('user-name').textContent = currentProfile.username || ''
   document.getElementById('sidebar-version').textContent = 'Resell Tracker Web'
+  const heroName = document.getElementById('hero-name-text')
+  if (heroName) heroName.textContent = currentProfile.username || 'Dashboard'
 }
 
 function buildAvatarUrl(discordId, avatarHash) {
@@ -165,7 +353,7 @@ function buildAvatarUrl(discordId, avatarHash) {
   return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=64`
 }
 
-// ── Data Loading ──────────────────────────────────────────────────────────────
+// -- Data Loading --------------------------------------------------------------
 async function loadAllData() {
   const uid = adminViewUserId || currentUser.id
   const [invRes, salesRes, pkgRes] = await Promise.all([
@@ -188,14 +376,20 @@ function startRealtimeListeners() {
   }, 15000)
 }
 
-// ── Navigation ────────────────────────────────────────────────────────────────
+// -- Navigation ----------------------------------------------------------------
 function switchView(name) {
   document.querySelectorAll('.view').forEach(v => {
     v.style.display = 'none'
     v.classList.remove('active')
   })
   const view = document.getElementById(`view-${name}`)
-  if (view) { view.style.display = 'block'; view.classList.add('active') }
+  if (view) {
+    view.style.display = 'block'
+    view.style.animation = 'none'
+    view.offsetHeight // force reflow so animation retriggers
+    view.style.animation = ''
+    view.classList.add('active')
+  }
 
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.toggle('active', n.dataset.view === name)
@@ -210,6 +404,7 @@ function switchView(name) {
   else if (name === 'packages')  renderPackages()
   else if (name === 'analytics') renderAnalytics()
   else if (name === 'admin')     renderAdmin()
+  else if (name === 'profile')   renderProfile()
 }
 
 function toggleSidebar() {
@@ -218,8 +413,179 @@ function toggleSidebar() {
   localStorage.setItem('rt-sidebar', collapsed ? '1' : '0')
 }
 
-// ── HOME ──────────────────────────────────────────────────────────────────────
+// -- Sparkline helpers ---------------------------------------------------------
+function getLast6MonthKeys() {
+  const keys = []
+  const d = new Date()
+  for (let i = 5; i >= 0; i--) {
+    const t = new Date(d.getFullYear(), d.getMonth() - i, 1)
+    keys.push(`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}`)
+  }
+  return keys
+}
+
+function setSparkline(id, values, color) {
+  const el = document.getElementById(id)
+  if (!el) return
+  if (!values || values.length < 2) { el.innerHTML = ''; return }
+  const W = 120, H = 36
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * W
+    const y = H - 2 - ((v - min) / range) * (H - 4)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  const polyPts = pts.join(' ')
+  const fill = `0,${H} ${polyPts} ${W},${H}`
+  const uid  = id + Math.random().toString(36).slice(2,6)
+  el.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${color}" stop-opacity="0.4"/>
+          <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <polygon points="${fill}" fill="url(#${uid})"/>
+      <polyline points="${polyPts}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`
+}
+
+// -- Table Sorting -------------------------------------------------------------
+let sortState = { inventory: { col: null, dir: null }, sales: { col: null, dir: null } }
+
+function sortTable(table, col) {
+  const s = sortState[table]
+  if (s.col === col) {
+    s.dir = s.dir === 'asc' ? 'desc' : s.dir === 'desc' ? null : 'asc'
+  } else {
+    s.col = col; s.dir = 'asc'
+  }
+  if (!s.dir) s.col = null
+
+  // Update sort icons
+  document.querySelectorAll(`[id^="sort-${table === 'inventory' ? 'inv' : table}-"]`).forEach(el => { el.className = 'sort-icon' })
+  if (s.col && s.dir) {
+    const icon = document.getElementById(`sort-${table === 'inventory' ? 'inv' : table}-${col}`)
+    if (icon) icon.className = `sort-icon ${s.dir}`
+  }
+
+  if (table === 'inventory') renderInventory()
+  else renderSales()
+}
+
+function applySorting(table, data) {
+  const s = sortState[table]
+  if (!s.col || !s.dir) return data
+  const sorted = [...data]
+  const col = s.col
+  sorted.sort((a, b) => {
+    let va, vb
+    if (col === '_profit') {
+      va = calcProfit(a); vb = calcProfit(b)
+    } else {
+      va = a[col]; vb = b[col]
+    }
+    if (va == null) va = ''
+    if (vb == null) vb = ''
+    if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb + '').toLowerCase() }
+    if (va < vb) return s.dir === 'asc' ? -1 : 1
+    if (va > vb) return s.dir === 'asc' ? 1 : -1
+    return 0
+  })
+  return sorted
+}
+
+// -- Sales Filters -------------------------------------------------------------
+function applySalesFilters(data) {
+  const platform = document.getElementById('filter-platform')?.value || ''
+  const pl       = document.getElementById('filter-profitloss')?.value || ''
+  const from     = document.getElementById('filter-date-from')?.value || ''
+  const to       = document.getElementById('filter-date-to')?.value || ''
+
+  let filtered = data
+  if (platform) filtered = filtered.filter(s => (s.platform || '').toLowerCase() === platform.toLowerCase())
+  if (pl === 'profit') filtered = filtered.filter(s => calcProfit(s) > 0)
+  if (pl === 'loss')   filtered = filtered.filter(s => calcProfit(s) < 0)
+  if (from) filtered = filtered.filter(s => (s.date || '') >= from)
+  if (to)   filtered = filtered.filter(s => (s.date || '') <= to)
+  return filtered
+}
+
+function clearSalesFilters() {
+  document.getElementById('filter-platform').value    = ''
+  document.getElementById('filter-profitloss').value  = ''
+  document.getElementById('filter-date-from').value   = ''
+  document.getElementById('filter-date-to').value     = ''
+  renderSales()
+}
+
+function populatePlatformFilter() {
+  const sel = document.getElementById('filter-platform')
+  if (!sel) return
+  const current = sel.value
+  const platforms = [...new Set(sales.map(s => s.platform).filter(Boolean))].sort()
+  sel.innerHTML = '<option value="">All Platforms</option>' +
+    platforms.map(p => `<option value="${p}" ${p === current ? 'selected' : ''}>${p}</option>`).join('')
+}
+
+// -- CSV Export ----------------------------------------------------------------
+function exportCSV(table) {
+  let rows = [], headers = []
+  if (table === 'inventory') {
+    headers = ['Product','Size','Qty','Store','Buy Price','Est. Resell','Notes','Date Added']
+    rows = inventory.map(i => [
+      i.productName, i.size || '', i.qty || 1, i.store || '',
+      i.buyPrice || 0, i.estimatedResell || '', i.notes || '', i.createdAt || ''
+    ])
+  } else if (table === 'sales') {
+    headers = ['Product','Size','Platform','Qty','Buy Price','Sell Price','Fees','Profit','Date']
+    rows = sales.map(s => [
+      s.productName, s.size || '', s.platform || '', s.qty || 1,
+      s.buyPrice || 0, s.sellPrice || 0, s.fees || 0, calcProfit(s).toFixed(2), s.date || ''
+    ])
+  }
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `${table}_${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
+
+function setTrend(id, values) {
+  const el = document.getElementById(id)
+  if (!el || values.length < 2) return
+  const prev = values[values.length - 2]
+  const curr = values[values.length - 1]
+  if (curr === 0 && prev === 0) { el.className = 'stat-trend flat'; el.textContent = '—'; return }
+  const pct = prev !== 0 ? ((curr - prev) / Math.abs(prev) * 100) : 100
+  if (pct > 1)       { el.className = 'stat-trend up';   el.textContent = `↑ ${pct.toFixed(0)}%` }
+  else if (pct < -1) { el.className = 'stat-trend down'; el.textContent = `↓ ${Math.abs(pct).toFixed(0)}%` }
+  else               { el.className = 'stat-trend flat'; el.textContent = '—' }
+}
+
+// -- HOME ----------------------------------------------------------------------
 function renderHome() {
+  // Hero section
+  const now  = new Date()
+  const hour = now.getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  const name = currentProfile?.username || ''
+  const el = document.getElementById('hero-greeting')
+  if (el) {
+    const full = name ? `${greeting}, ${name}` : greeting
+    if (!greetingTyped) { greetingTyped = true; typewrite(el, full) }
+    else el.textContent = full
+  }
+  const dateEl = document.getElementById('hero-date')
+  if (dateEl) dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const timeEl = document.getElementById('hero-time')
+  if (timeEl) timeEl.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+
   const invValue  = inventory.reduce((s, i) => s + (i.buyPrice || 0) * (i.qty || 1), 0)
   const spent     = sales.reduce((s, s2) => s + (s2.buyPrice || 0) * (s2.qty || 1), 0)
   const revenue   = sales.reduce((s, s2) => s + (s2.sellPrice || 0) * (s2.qty || 1), 0)
@@ -228,13 +594,51 @@ function renderHome() {
   const sold      = sales.reduce((s, s2) => s + (s2.qty || 1), 0)
   const roi       = spent > 0 ? (profit / spent * 100) : 0
 
-  document.getElementById('stat-inv-value').textContent  = fmt(invValue)
+  animateCounter('stat-inv-value', invValue,  true,  false, 2)
+  animateCounter('stat-profit',   profit,     true,  false, 2)
+  animateCounter('stat-sold',     sold,       false, false, 0)
+  animateCounter('stat-roi',      roi,        false, true,  1)
   document.getElementById('stat-inv-count').textContent  = `${inventory.length} item${inventory.length !== 1 ? 's' : ''}`
-  document.getElementById('stat-profit').textContent     = fmt(profit)
   document.getElementById('stat-profit-sub').textContent = `${sales.length} sale${sales.length !== 1 ? 's' : ''}`
-  document.getElementById('stat-sold').textContent       = sold
   document.getElementById('stat-sold-sub').textContent   = `units across ${sales.length} sale${sales.length !== 1 ? 's' : ''}`
-  document.getElementById('stat-roi').textContent        = `${roi.toFixed(1)}%`
+
+  // Sparklines + trends (last 6 months)
+  const monthly = getLast6MonthKeys()
+  const monthlyProfit = monthly.map(m => {
+    const ms = sales.filter(s => (s.createdAt || s.date || '').slice(0,7) === m)
+    return ms.reduce((a,s) => a + calcProfit(s), 0)
+  })
+  const monthlySold = monthly.map(m =>
+    sales.filter(s => (s.createdAt || s.date || '').slice(0,7) === m)
+         .reduce((a,s) => a + (s.qty || 1), 0)
+  )
+  const monthlyROI = monthly.map(m => {
+    const ms = sales.filter(s => (s.createdAt || s.date || '').slice(0,7) === m)
+    const sp = ms.reduce((a,s) => a + (s.buyPrice||0)*(s.qty||1), 0)
+    const pr = ms.reduce((a,s) => a + calcProfit(s), 0)
+    return sp > 0 ? (pr/sp*100) : 0
+  })
+
+  const invCounts = monthly.map(m =>
+    inventory.filter(i => (i.createdAt||'').slice(0,7) <= m).length
+  )
+
+  setSparkline('spark-inv',    invCounts,    '#818cf8')
+  setSparkline('spark-profit', monthlyProfit,'#10b981')
+  setSparkline('spark-sold',   monthlySold,  '#f59e0b')
+  setSparkline('spark-roi',    monthlyROI,   '#06b6d4')
+
+  setTrend('trend-inv',    invCounts)
+  setTrend('trend-profit', monthlyProfit)
+  setTrend('trend-sold',   monthlySold)
+  setTrend('trend-roi',    monthlyROI)
+
+  // Animate ROI ring
+  const roiPath = document.getElementById('roi-ring-path')
+  if (roiPath) {
+    const pct = Math.min(Math.max(roi, 0), 150) / 150
+    roiPath.style.strokeDashoffset = (175.9 * (1 - pct)).toFixed(2)
+  }
 
   // Recent inventory
   const recentInv = document.getElementById('home-recent-inv')
@@ -265,14 +669,81 @@ function renderHome() {
         </div>`
     }).join('')
   }
+
+  // Mini monthly chart on home
+  const homeCtx = document.getElementById('chart-home-monthly')
+  if (homeCtx) {
+    const yr = new Date().getFullYear()
+    const labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const yrSales = sales.filter(s => {
+      const d = s.date || s.createdAt || ''
+      return d && new Date(d).getFullYear() === yr
+    })
+    const mSpent = Array.from({ length: 12 }, (_, m) =>
+      yrSales.filter(s => new Date(s.date || s.createdAt).getMonth() === m)
+             .reduce((a, s) => a + (s.buyPrice || 0) * (s.qty || 1), 0))
+    const mRevenue = Array.from({ length: 12 }, (_, m) =>
+      yrSales.filter(s => new Date(s.date || s.createdAt).getMonth() === m)
+             .reduce((a, s) => a + (s.sellPrice || 0) * (s.qty || 1), 0))
+    const mProfit = Array.from({ length: 12 }, (_, m) => {
+      const ms = yrSales.filter(s => new Date(s.date || s.createdAt).getMonth() === m)
+      return ms.reduce((a, s) => a + calcProfit(s), 0)
+    })
+
+    if (chartHomeMini) chartHomeMini.destroy()
+    chartHomeMini = new Chart(homeCtx.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Spent',
+            data: mSpent,
+            backgroundColor: 'rgba(244,63,94,0.35)',
+            borderColor: '#f43f5e',
+            borderWidth: 1.5,
+            borderRadius: 6,
+          },
+          {
+            label: 'Revenue',
+            data: mRevenue,
+            backgroundColor: 'rgba(99,102,241,0.35)',
+            borderColor: '#6366f1',
+            borderWidth: 1.5,
+            borderRadius: 6,
+          },
+          {
+            label: 'Profit',
+            data: mProfit,
+            backgroundColor: 'rgba(16,185,129,0.35)',
+            borderColor: '#10b981',
+            borderWidth: 1.5,
+            borderRadius: 6,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { labels: { color: '#6060a0', font: { size: 11, weight: '600', family: 'Inter' } } }
+        },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#6060a0', font: { size: 10 } } },
+          y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#6060a0', font: { size: 10 }, callback: v => `$${v}` } }
+        }
+      }
+    })
+  }
 }
 
-// ── INVENTORY ─────────────────────────────────────────────────────────────────
+// -- INVENTORY -----------------------------------------------------------------
 function renderInventory() {
   const q    = (document.getElementById('inv-search')?.value || '').toLowerCase()
-  const data = q
+  let data = q
     ? inventory.filter(i => [i.productName, i.store, i.size].join(' ').toLowerCase().includes(q))
-    : inventory
+    : [...inventory]
+  data = applySorting('inventory', data)
 
   document.getElementById('inv-count').textContent = `${inventory.length} Total`
 
@@ -343,6 +814,10 @@ function openInvModal(item) {
 }
 
 async function saveInv() {
+  if (_saving) return; _saving = true
+  try { await _saveInv() } finally { _saving = false }
+}
+async function _saveInv() {
   const name = document.getElementById('i-product').value.trim()
   const buy  = document.getElementById('i-buy').value.trim()
   if (!name) { document.getElementById('i-product').focus(); return }
@@ -403,18 +878,21 @@ function markSold(item) {
   document.getElementById('s-qty').value     = item.qty || 1
 }
 
-// ── SALES ─────────────────────────────────────────────────────────────────────
+// -- SALES ---------------------------------------------------------------------
 function renderSales() {
+  populatePlatformFilter()
   const q    = (document.getElementById('sales-search')?.value || '').toLowerCase()
-  const data = q
+  let data = q
     ? sales.filter(s => [s.productName, s.platform, s.size].join(' ').toLowerCase().includes(q))
-    : sales
+    : [...sales]
+  data = applySalesFilters(data)
+  data = applySorting('sales', data)
 
-  document.getElementById('sales-count').textContent = `${sales.length} Total`
+  document.getElementById('sales-count').textContent = `${data.length}${data.length !== sales.length ? ` / ${sales.length}` : ''} Total`
 
-  const spent   = sales.reduce((a, s) => a + (s.buyPrice  || 0) * (s.qty || 1), 0)
-  const revenue = sales.reduce((a, s) => a + (s.sellPrice || 0) * (s.qty || 1), 0)
-  const fees    = sales.reduce((a, s) => a + (s.fees      || 0), 0)
+  const spent   = data.reduce((a, s) => a + (s.buyPrice  || 0) * (s.qty || 1), 0)
+  const revenue = data.reduce((a, s) => a + (s.sellPrice || 0) * (s.qty || 1), 0)
+  const fees    = data.reduce((a, s) => a + (s.fees      || 0), 0)
   const profit  = revenue - spent - fees
 
   document.getElementById('ss-spent').textContent   = fmt(spent)
@@ -477,6 +955,10 @@ function openSaleModal(item) {
 }
 
 async function saveSale() {
+  if (_saving) return; _saving = true
+  try { await _saveSale() } finally { _saving = false }
+}
+async function _saveSale() {
   const name = document.getElementById('s-product').value.trim()
   const sell = document.getElementById('s-sell').value.trim()
   if (!name) { document.getElementById('s-product').focus(); return }
@@ -521,7 +1003,7 @@ async function saveSale() {
   }
 }
 
-// ── PACKAGES ──────────────────────────────────────────────────────────────────
+// -- PACKAGES ------------------------------------------------------------------
 function renderPackages() {
   document.getElementById('pkg-count').textContent = `${packages.length} Total`
 
@@ -556,6 +1038,7 @@ function renderPackages() {
       <div class="pkg-footer">
         <span>${p.carrier || 'Unknown carrier'}${p.deliveryDate ? ` · Est. ${new Date(p.deliveryDate).toLocaleDateString()}` : ''}</span>
         <div class="pkg-actions">
+          <button class="btn-icon" onclick="openCarrierSite('${esc(p.trackingNumber)}','${esc(p.carrier || '')}')" title="Track on carrier site">🔗</button>
           <button class="btn-icon" onclick="openPkgModal(${JSON.stringify(p).replace(/"/g,'&quot;')})">✏️</button>
           <button class="btn-icon danger" onclick="confirmDelete('packages','${p.id}','${esc(p.nickname || p.trackingNumber)}')">🗑️</button>
         </div>
@@ -577,6 +1060,10 @@ function openPkgModal(item) {
 }
 
 async function savePkg() {
+  if (_saving) return; _saving = true
+  try { await _savePkg() } finally { _saving = false }
+}
+async function _savePkg() {
   const tracking = document.getElementById('p-tracking').value.trim()
   if (!tracking) { document.getElementById('p-tracking').focus(); return }
 
@@ -615,7 +1102,26 @@ async function savePkg() {
   }
 }
 
-// ── DELETE ────────────────────────────────────────────────────────────────────
+// -- Carrier tracking URLs -----------------------------------------------------
+function carrierTrackingUrl(trackingNumber, carrier) {
+  const t = encodeURIComponent(trackingNumber)
+  const urls = {
+    'USPS':       `https://tools.usps.com/go/TrackConfirmAction?tLabels=${t}`,
+    'UPS':        `https://www.ups.com/track?tracknum=${t}`,
+    'FedEx':      `https://www.fedex.com/fedextrack/?trknbr=${t}`,
+    'DHL':        `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${t}`,
+    'LaserShip':  `https://www.lasership.com/track/${t}`,
+    'OnTrac':     `https://www.ontrac.com/tracking/?number=${t}`,
+    'Amazon':     `https://track.amazon.com/tracking/${t}`
+  }
+  return urls[carrier] || `https://t.17track.net/en#nums=${t}`
+}
+
+function openCarrierSite(trackingNumber, carrier) {
+  window.open(carrierTrackingUrl(trackingNumber, carrier), '_blank')
+}
+
+// -- DELETE --------------------------------------------------------------------
 function confirmDelete(table, id, name) {
   document.getElementById('modal-delete-msg').textContent =
     `Are you sure you want to delete "${name}"? This cannot be undone.`
@@ -624,7 +1130,11 @@ function confirmDelete(table, id, name) {
 }
 
 async function doDelete(table, id) {
-  const { error } = await sb.from(table).delete().eq('id', id)
+  if (_saving) return; _saving = true
+  try { await _doDelete(table, id) } finally { _saving = false }
+}
+async function _doDelete(table, id) {
+  const { error } = await sb.from(table).delete().eq('id', id).eq('user_id', currentUser.id)
   if (error) { showToast('error', 'Delete failed', error.message); return }
 
   if (table === 'inventory') inventory = inventory.filter(i => i.id !== id)
@@ -639,7 +1149,7 @@ async function doDelete(table, id) {
   showToast('success', 'Deleted', 'Item removed.')
 }
 
-// ── ANALYTICS ─────────────────────────────────────────────────────────────────
+// -- ANALYTICS -----------------------------------------------------------------
 function renderAnalytics() {
   document.getElementById('year-label').textContent = analyticsYear
 
@@ -651,9 +1161,8 @@ function renderAnalytics() {
   const revenue = months.map(m => yearSales.filter(s => new Date(s.date).getMonth() === m).reduce((a, s) => a + (s.sellPrice || 0) * (s.qty || 1), 0))
   const profit  = months.map((_, i) => revenue[i] - spent[i] - yearSales.filter(s => new Date(s.date).getMonth() === i).reduce((a, s) => a + (s.fees || 0), 0))
 
-  const dark  = document.documentElement.getAttribute('data-theme') === 'dark'
-  const gridC = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'
-  const textC = dark ? '#7878a0' : '#6b6563'
+  const gridC = 'rgba(255,255,255,0.06)'
+  const textC = '#7878a0'
 
   // Monthly chart
   if (chartMonthly) chartMonthly.destroy()
@@ -663,9 +1172,9 @@ function renderAnalytics() {
     data: {
       labels,
       datasets: [
-        { label: 'Spent',   data: spent,   backgroundColor: dark ? 'rgba(255,51,102,0.5)' : 'rgba(239,68,68,0.5)',  borderColor: dark ? '#ff3366' : '#ef4444', borderWidth: 1.5, borderRadius: 4 },
-        { label: 'Revenue', data: revenue, backgroundColor: dark ? 'rgba(255,149,0,0.5)'  : 'rgba(249,115,22,0.5)', borderColor: dark ? '#ff9500' : '#f97316', borderWidth: 1.5, borderRadius: 4 },
-        { label: 'Profit',  data: profit,  backgroundColor: dark ? 'rgba(0,255,136,0.5)'  : 'rgba(34,197,94,0.5)',  borderColor: dark ? '#00ff88' : '#22c55e', borderWidth: 1.5, borderRadius: 4 },
+        { label: 'Spent',   data: spent,   backgroundColor: 'rgba(244,63,94,0.4)',   borderColor: '#f43f5e', borderWidth: 1.5, borderRadius: 6 },
+        { label: 'Revenue', data: revenue, backgroundColor: 'rgba(245,158,11,0.4)', borderColor: '#f59e0b', borderWidth: 1.5, borderRadius: 6 },
+        { label: 'Profit',  data: profit,  backgroundColor: 'rgba(16,185,129,0.4)', borderColor: '#10b981', borderWidth: 1.5, borderRadius: 6 },
       ]
     },
     options: {
@@ -705,7 +1214,7 @@ function renderAnalytics() {
       type: 'doughnut',
       data: {
         labels: platLabels,
-        datasets: [{ data: platData, backgroundColor: colors, borderWidth: 2, borderColor: dark ? '#0f0f1a' : '#ffffff' }]
+        datasets: [{ data: platData, backgroundColor: colors, borderWidth: 2, borderColor: '#111118' }]
       },
       options: {
         responsive: true,
@@ -724,8 +1233,9 @@ function changeYear(delta) {
   renderAnalytics()
 }
 
-// ── ADMIN ─────────────────────────────────────────────────────────────────────
+// -- ADMIN ---------------------------------------------------------------------
 async function renderAdmin() {
+  if (!currentProfile?.is_admin) { showToast('error', 'Access denied', 'Admin only'); return }
   const tbody = document.getElementById('admin-users-tbody')
   tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px"><div class="spinner"></div></td></tr>`
 
@@ -767,6 +1277,7 @@ async function renderAdmin() {
 }
 
 async function toggleApproval(userId, approve) {
+  if (!currentProfile?.is_admin) { showToast('error', 'Access denied', 'Admin only'); return }
   const { error } = await sb.from('profiles').update({ is_approved: approve }).eq('id', userId)
   if (error) { showToast('error', 'Failed', error.message); return }
   showToast('success', approve ? 'User approved' : 'Access revoked', '')
@@ -774,6 +1285,7 @@ async function toggleApproval(userId, approve) {
 }
 
 async function viewClientData(userId, username) {
+  if (!currentProfile?.is_admin) { showToast('error', 'Access denied', 'Admin only'); return }
   adminViewUserId = userId
   document.getElementById('admin-viewing-name').textContent = username
   document.getElementById('admin-viewing-banner').style.display = 'block'
@@ -790,7 +1302,71 @@ async function resetAdminView() {
   switchView('admin')
 }
 
-// ── PHOTO ─────────────────────────────────────────────────────────────────────
+// -- PROFILE / SETTINGS --------------------------------------------------------
+function renderProfile() {
+  const avatar = buildAvatarUrl(currentProfile.discord_id, currentProfile.avatar_url)
+  document.getElementById('profile-avatar').src = avatar
+  document.getElementById('profile-username').textContent = currentProfile.username || 'Unknown'
+  document.getElementById('profile-discord-id').textContent = currentProfile.discord_id ? `Discord ID: ${currentProfile.discord_id}` : ''
+  document.getElementById('profile-joined').textContent = currentProfile.created_at ? `Joined ${new Date(currentProfile.created_at).toLocaleDateString()}` : ''
+  document.getElementById('set-username').value = currentProfile.username || ''
+  document.getElementById('set-dark-mode').checked = document.documentElement.getAttribute('data-theme') !== 'light'
+  const obKey = `onboarded_${currentUser.id}`
+  document.getElementById('set-replay-onboarding').checked = !localStorage.getItem(obKey)
+}
+
+async function saveUsername() {
+  const name = document.getElementById('set-username').value.trim()
+  if (!name) return
+  const { error } = await sb.from('profiles').update({ username: name }).eq('id', currentUser.id)
+  if (error) { showToast('error', 'Save failed', error.message); return }
+  currentProfile.username = name
+  renderUserHeader()
+  document.getElementById('profile-username').textContent = name
+  showToast('success', 'Saved', 'Display name updated')
+}
+
+function toggleReplayOnboarding() {
+  const obKey = `onboarded_${currentUser.id}`
+  if (document.getElementById('set-replay-onboarding').checked) {
+    localStorage.removeItem(obKey)
+  } else {
+    localStorage.setItem(obKey, '1')
+  }
+}
+
+// -- ONBOARDING ----------------------------------------------------------------
+let obStep = 0
+const OB_TOTAL = 6
+
+function nextOnboardingStep() {
+  obStep++
+  if (obStep >= OB_TOTAL) { closeOnboarding(); return }
+  showOnboardingStep()
+}
+
+function showOnboardingStep() {
+  document.querySelectorAll('.onboarding-step').forEach(el => {
+    el.style.display = el.dataset.step == obStep ? 'flex' : 'none'
+  })
+  document.querySelectorAll('.ob-dot').forEach(el => {
+    el.classList.toggle('active', el.dataset.dot == obStep)
+  })
+  const nextBtn = document.getElementById('ob-next')
+  nextBtn.textContent = obStep === OB_TOTAL - 1 ? "Let's Go!" : 'Next'
+  const skipBtn = document.getElementById('ob-skip')
+  skipBtn.style.display = obStep === OB_TOTAL - 1 ? 'none' : ''
+}
+
+function closeOnboarding() {
+  const overlay = document.getElementById('onboarding-overlay')
+  overlay.style.opacity = '0'
+  setTimeout(() => { overlay.style.display = 'none'; overlay.style.opacity = ''; }, 300)
+  if (currentUser) localStorage.setItem(`onboarded_${currentUser.id}`, '1')
+  obStep = 0
+}
+
+// -- PHOTO ---------------------------------------------------------------------
 function setupPhotoZone() {
   const input   = document.getElementById('inv-photo-input')
   const preview = document.getElementById('inv-photo-preview')
@@ -847,7 +1423,7 @@ async function uploadPhoto(file) {
   return publicUrl
 }
 
-// ── MODALS ────────────────────────────────────────────────────────────────────
+// -- MODALS --------------------------------------------------------------------
 function openModal(id) {
   document.getElementById(id).style.display = 'flex'
   document.body.style.overflow = 'hidden'
@@ -873,7 +1449,7 @@ function setupKeyboard() {
   })
 }
 
-// ── TOAST ─────────────────────────────────────────────────────────────────────
+// -- TOAST ---------------------------------------------------------------------
 let toastTimer = null
 function showToast(type, title, msg) {
   const toast = document.getElementById('toast')
@@ -891,7 +1467,7 @@ function showToast(type, title, msg) {
   toastTimer = setTimeout(() => toast.classList.remove('show'), 3500)
 }
 
-// ── LIGHTBOX ──────────────────────────────────────────────────────────────────
+// -- LIGHTBOX ------------------------------------------------------------------
 function openLightbox(src) {
   const lb = document.createElement('div')
   lb.className = 'lightbox'
@@ -900,8 +1476,10 @@ function openLightbox(src) {
   document.body.appendChild(lb)
 }
 
-// ── SCREEN MANAGEMENT ─────────────────────────────────────────────────────────
+// -- SCREEN MANAGEMENT ---------------------------------------------------------
 function showScreen(id) {
+  const loading = document.getElementById('screen-loading')
+  if (loading) loading.style.display = 'none';
   ['screen-login','screen-pending','screen-app'].forEach(s => {
     const el = document.getElementById(s)
     if (el) el.style.display = s === id ? (s === 'screen-app' ? 'flex' : 'flex') : 'none'
@@ -914,10 +1492,9 @@ function showScreen(id) {
   }
 }
 
-// ── THEME ─────────────────────────────────────────────────────────────────────
+// -- THEME ---------------------------------------------------------------------
 function applyTheme() {
-  const saved = localStorage.getItem('rt-theme')
-  if (saved) document.documentElement.setAttribute('data-theme', saved)
+  document.documentElement.setAttribute('data-theme', 'dark')
 }
 
 function toggleTheme() {
@@ -938,7 +1515,7 @@ function updateThemeIcon() {
   document.getElementById('icon-sun').style.display  = dark  ? 'block' : 'none'
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
+// -- HELPERS -------------------------------------------------------------------
 function fmt(n)     { return `$${(parseFloat(n) || 0).toFixed(2)}` }
 function esc(s)     { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
 function today()    { return new Date().toISOString().slice(0,10) }

@@ -1,6 +1,44 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
+v2.1.0 — 2026-03-13
+--------------------
+ADDED
+  - Landing page — hero section with animated gradient text, feature cards
+    (Inventory, Sales, Packages, Analytics), and call-to-action before login.
+  - Onboarding flow — 6-step welcome walkthrough for first-time users with
+    dot navigation, skip button, and per-user localStorage tracking.
+  - Profile & Settings page — view avatar, Discord ID, join date, toggle
+    dark mode, replay onboarding, and sign out. Click your avatar in the
+    header to access it.
+  - Table sorting — click any column header in Inventory or Sales to sort
+    ascending/descending/none with visual sort indicators.
+  - CSV export — export Inventory or Sales data as a .csv file download.
+  - Sales quick filters — filter by platform, profit/loss, and date range.
+    Stats row updates to reflect filtered data.
+  - Open on carrier site — packages now have a link button to open tracking
+    on USPS, UPS, FedEx, DHL, or 17track.
+  - Loading screen — spinner shown during session restore instead of
+    flashing the login page.
+  - Cloudflare Pages hosting — moved from Netlify for unlimited bandwidth.
+
+SECURITY
+  - Row-Level Security (RLS) policies on all Supabase tables — users can
+    only read/write their own data at the database level.
+  - Admin helper function (is_admin) using SECURITY DEFINER to avoid RLS
+    recursion on profiles table.
+  - Admin guards — renderAdmin, toggleApproval, and viewClientData now
+    check is_admin client-side before executing.
+  - Delete operations now filter by user_id to prevent cross-user deletes.
+  - Double-submit prevention on all save/delete actions.
+
+CHANGED
+  - Session restore uses getSession() instead of relying solely on
+    onAuthStateChange for more reliable refresh behavior.
+  - Sales stats row recalculates based on filtered data when filters active.
+  - Mobile responsiveness polished — tables scroll horizontally, filter bar
+    stacks, modals full-width, header username hidden on small screens.
+
 v1.9.0 — 2026-03-11
 --------------------
 ADDED

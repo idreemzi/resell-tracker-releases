@@ -7,37 +7,104 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>Resell Tracker</title>
-  <script>
-    if (localStorage.getItem('rt-theme') === 'dark')
-      document.documentElement.setAttribute('data-theme', 'dark')
-  </script>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" type="text/css" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
-     SCREEN: LOGIN
-══════════════════════════════════════════════════════════════════════════ -->
-<div id="screen-login" class="screen">
-  <div class="login-card">
-    <div class="login-logo">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-    </div>
-    <h1 class="login-title">Resell Tracker</h1>
-    <p class="login-sub">Sign in to access your dashboard</p>
-    <button id="btn-discord-login" class="btn-discord" onclick="loginWithDiscord()">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
-      Continue with Discord
-    </button>
-    <div id="login-error" class="login-error" style="display:none"></div>
+<!-- Animated background orbs -->
+<div class="bg-orbs" aria-hidden="true">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+<canvas id="particles" aria-hidden="true" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0.6"></canvas>
+
+<!-- --------------------------------------------------------------------------
+     SCREEN: LOADING (shown while restoring session)
+-------------------------------------------------------------------------- -->
+<div id="screen-loading" class="screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh">
+  <div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px">
+    <div class="spinner" style="width:36px;height:36px"></div>
+    <span style="color:var(--text-muted);font-size:14px">Loading...</span>
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- --------------------------------------------------------------------------
+     SCREEN: LANDING + LOGIN
+-------------------------------------------------------------------------- -->
+<div id="screen-login" class="screen" style="display:none">
+
+  <!-- -- Landing hero -- -->
+  <div class="landing">
+    <div class="landing-hero">
+      <div class="landing-badge">Resell smarter, not harder</div>
+      <h1 class="landing-h1">Track Every Flip.<br><span class="gradient-text">Maximize Profit.</span></h1>
+      <p class="landing-p">The all-in-one dashboard for resellers. Track inventory, log sales, monitor packages, and see your analytics — all in one place.</p>
+      <button class="btn-landing-cta" onclick="document.getElementById('login-section').scrollIntoView({behavior:'smooth'})">
+        Get Started
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+      </button>
+    </div>
+
+    <!-- -- Feature cards -- -->
+    <div class="landing-features">
+      <div class="landing-feature">
+        <div class="landing-feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+        </div>
+        <h3>Inventory</h3>
+        <p>Keep track of every item you own, its cost, size, and estimated resale value.</p>
+      </div>
+      <div class="landing-feature">
+        <div class="landing-feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </div>
+        <h3>Sales</h3>
+        <p>Log every sale with platform, fees, and profit calculated automatically.</p>
+      </div>
+      <div class="landing-feature">
+        <div class="landing-feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        </div>
+        <h3>Packages</h3>
+        <p>Track shipments across USPS, UPS, FedEx, and more with live status updates.</p>
+      </div>
+      <div class="landing-feature">
+        <div class="landing-feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <h3>Analytics</h3>
+        <p>See profit trends, ROI, monthly charts, and know exactly how your business is doing.</p>
+      </div>
+    </div>
+
+    <!-- -- Sign-in section -- -->
+    <div id="login-section" class="landing-login-section">
+      <div class="login-card">
+        <div class="login-logo">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <h1 class="login-title">Resell Tracker</h1>
+        <p class="login-sub">Sign in to access your dashboard</p>
+        <button id="btn-discord-login" class="btn-discord" onclick="loginWithDiscord()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+          Continue with Discord
+        </button>
+        <div id="login-error" class="login-error" style="display:none"></div>
+      </div>
+    </div>
+
+    <footer class="landing-footer">
+      <p>Built for resellers, by resellers.</p>
+    </footer>
+  </div>
+</div>
+
+<!-- --------------------------------------------------------------------------
      SCREEN: PENDING APPROVAL
-══════════════════════════════════════════════════════════════════════════ -->
+-------------------------------------------------------------------------- -->
 <div id="screen-pending" class="screen" style="display:none">
   <div class="login-card">
     <img id="pending-avatar" class="pending-avatar" src="" alt="" />
@@ -48,9 +115,9 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- --------------------------------------------------------------------------
      SCREEN: APP
-══════════════════════════════════════════════════════════════════════════ -->
+-------------------------------------------------------------------------- -->
 <div id="screen-app" class="screen" style="display:none">
 
   <!-- Header -->
@@ -64,7 +131,7 @@
         <svg id="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg id="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       </button>
-      <div class="header-user">
+      <div class="header-user" onclick="switchView('profile')" style="cursor:pointer" title="Profile & Settings">
         <img id="user-avatar" class="user-avatar" src="" alt="" />
         <span id="user-name" class="user-name"></span>
       </div>
@@ -83,13 +150,13 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           <span>Home</span>
         </button>
-        <button class="nav-item nav-inventory" data-view="inventory" onclick="switchView('inventory')">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          <span>Inventory</span>
-        </button>
         <button class="nav-item nav-sales" data-view="sales" onclick="switchView('sales')">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           <span>Sales</span>
+        </button>
+        <button class="nav-item nav-inventory" data-view="inventory" onclick="switchView('inventory')">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>Inventory</span>
         </button>
         <button class="nav-item nav-packages" data-view="packages" onclick="switchView('packages')">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
@@ -112,49 +179,141 @@
     <!-- Main content -->
     <main class="main-content">
 
-      <!-- ── VIEW: HOME ──────────────────────────────────────────────────── -->
+      <!-- -- VIEW: HOME ---------------------------------------------------- -->
       <div id="view-home" class="view active">
-        <div class="page-header">
-          <h1 class="page-title">Dashboard</h1>
-        </div>
-        <div class="stats-grid" id="home-stats">
-          <div class="stat-card">
-            <div class="stat-label">Inventory Value</div>
-            <div class="stat-value" id="stat-inv-value">—</div>
-            <div class="stat-sub" id="stat-inv-count"></div>
+
+        <!-- Hero Band -->
+        <div class="hero-band">
+          <div>
+            <div class="hero-greeting" id="hero-greeting">Welcome back</div>
+            <div class="hero-name" id="hero-name-text">Dashboard</div>
+            <div class="hero-sub">Here's how your resell business is doing.</div>
           </div>
-          <div class="stat-card stat-green">
+          <div class="hero-right">
+            <div class="hero-date" id="hero-date"></div>
+            <div class="hero-time" id="hero-time"></div>
+            <div class="hero-sync-dot">Live sync</div>
+          </div>
+        </div>
+
+        <!-- Bento Grid -->
+        <div class="bento-grid">
+
+          <!-- FEATURED: Inventory Value (tall left) -->
+          <div class="stat-card bento-inv" id="bcard-inv">
+            <div class="spotlight"></div>
+            <div class="stat-card-top">
+              <div class="stat-card-icon" style="background:rgba(99,102,241,0.12);color:#818cf8;border:1px solid rgba(99,102,241,0.2)">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 7l10-5 10 5-10 5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              </div>
+              <span class="stat-trend flat" id="trend-inv"></span>
+            </div>
+            <div class="stat-label">Inventory Value</div>
+            <div class="stat-value bento-val-xl" id="stat-inv-value">—</div>
+            <div class="stat-sub" id="stat-inv-count"></div>
+            <div class="stat-sparkline bento-spark" id="spark-inv"></div>
+          </div>
+
+          <!-- Total Profit -->
+          <div class="stat-card stat-green bento-profit" id="bcard-profit">
+            <div class="spotlight"></div>
+            <div class="stat-card-top">
+              <div class="stat-card-icon" style="background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.2)">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+              </div>
+              <span class="stat-trend flat" id="trend-profit"></span>
+            </div>
             <div class="stat-label">Total Profit</div>
             <div class="stat-value" id="stat-profit">—</div>
             <div class="stat-sub" id="stat-profit-sub"></div>
+            <div class="stat-sparkline" id="spark-profit"></div>
           </div>
-          <div class="stat-card stat-orange">
-            <div class="stat-label">Items Sold</div>
-            <div class="stat-value" id="stat-sold">—</div>
-            <div class="stat-sub" id="stat-sold-sub"></div>
-          </div>
-          <div class="stat-card stat-teal">
+
+          <!-- ROI with animated ring -->
+          <div class="stat-card stat-teal bento-roi" id="bcard-roi">
+            <div class="spotlight"></div>
+            <div class="stat-card-top">
+              <div class="stat-card-icon" style="background:rgba(6,182,212,0.1);color:#06b6d4;border:1px solid rgba(6,182,212,0.2)">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              </div>
+              <span class="stat-trend flat" id="trend-roi"></span>
+            </div>
             <div class="stat-label">ROI</div>
-            <div class="stat-value" id="stat-roi">—</div>
-            <div class="stat-sub">return on investment</div>
+            <div class="roi-ring-wrap">
+              <div class="roi-ring-svg-wrap">
+                <svg class="roi-svg" viewBox="0 0 70 70">
+                  <defs>
+                    <linearGradient id="roi-grad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stop-color="#06b6d4"/>
+                      <stop offset="100%" stop-color="#a78bfa"/>
+                    </linearGradient>
+                  </defs>
+                  <circle cx="35" cy="35" r="28" fill="none" stroke="rgba(6,182,212,0.1)" stroke-width="5"/>
+                  <circle cx="35" cy="35" r="28" fill="none" stroke="url(#roi-grad)" stroke-width="5"
+                    stroke-linecap="round"
+                    stroke-dasharray="175.9"
+                    stroke-dashoffset="175.9"
+                    id="roi-ring-path"
+                    style="transform:rotate(-90deg);transform-origin:35px 35px;transition:stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1)"/>
+                </svg>
+                <div class="roi-ring-center">
+                  <div class="stat-value" id="stat-roi">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="stat-sub" style="margin-top:8px">return on investment</div>
+          </div>
+
+          <!-- Items Sold (wide bottom) -->
+          <div class="stat-card stat-orange bento-sold" id="bcard-sold">
+            <div class="spotlight"></div>
+            <div class="bento-sold-inner">
+              <div class="bento-sold-left">
+                <div class="stat-card-top">
+                  <div class="stat-card-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2)">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                  </div>
+                  <span class="stat-trend flat" id="trend-sold"></span>
+                </div>
+                <div class="stat-label">Items Sold</div>
+                <div class="stat-value" id="stat-sold">—</div>
+                <div class="stat-sub" id="stat-sold-sub"></div>
+              </div>
+              <div class="bento-sold-spark">
+                <div class="stat-sparkline" id="spark-sold" style="height:60px"></div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /bento-grid -->
+
+        <!-- Mini Chart -->
+        <div class="card mt-16">
+          <div class="card-head">Monthly Overview</div>
+          <div style="padding:18px 18px 14px">
+            <canvas id="chart-home-monthly" style="max-height:180px"></canvas>
           </div>
         </div>
-        <div class="card mt-16">
-          <div class="card-head">Recent Inventory</div>
-          <div id="home-recent-inv" class="recent-list"></div>
-        </div>
-        <div class="card mt-16">
-          <div class="card-head">Recent Sales</div>
-          <div id="home-recent-sales" class="recent-list"></div>
+
+        <div class="home-grid mt-16">
+          <div class="card">
+            <div class="card-head">Recent Inventory</div>
+            <div id="home-recent-inv" class="recent-list"></div>
+          </div>
+          <div class="card">
+            <div class="card-head">Recent Sales</div>
+            <div id="home-recent-sales" class="recent-list"></div>
+          </div>
         </div>
       </div>
 
-      <!-- ── VIEW: INVENTORY ─────────────────────────────────────────────── -->
+      <!-- -- VIEW: INVENTORY ----------------------------------------------- -->
       <div id="view-inventory" class="view" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Inventory <span class="page-count" id="inv-count"></span></h1>
           <div class="page-actions">
             <input type="text" id="inv-search" class="search-input" placeholder="Search…" oninput="renderInventory()" />
+            <button class="btn-secondary" onclick="exportCSV('inventory')" title="Export CSV">⬇ Export</button>
             <button class="btn-add btn-add-inv" onclick="openInvModal(null)">+ Add Item</button>
           </div>
         </div>
@@ -163,12 +322,12 @@
             <table class="data-table">
               <thead><tr>
                 <th></th>
-                <th>Product</th>
-                <th class="hide-sm">Size</th>
-                <th class="hide-sm">Qty</th>
-                <th class="hide-sm">Store</th>
-                <th>Cost</th>
-                <th class="hide-sm">Est. Resell</th>
+                <th class="sortable" onclick="sortTable('inventory','productName')">Product <span class="sort-icon" id="sort-inv-productName"></span></th>
+                <th class="hide-sm sortable" onclick="sortTable('inventory','size')">Size <span class="sort-icon" id="sort-inv-size"></span></th>
+                <th class="hide-sm sortable" onclick="sortTable('inventory','qty')">Qty <span class="sort-icon" id="sort-inv-qty"></span></th>
+                <th class="hide-sm sortable" onclick="sortTable('inventory','store')">Store <span class="sort-icon" id="sort-inv-store"></span></th>
+                <th class="sortable" onclick="sortTable('inventory','buyPrice')">Cost <span class="sort-icon" id="sort-inv-buyPrice"></span></th>
+                <th class="hide-sm sortable" onclick="sortTable('inventory','estimatedResell')">Est. Resell <span class="sort-icon" id="sort-inv-estimatedResell"></span></th>
                 <th></th>
               </tr></thead>
               <tbody id="inv-tbody"></tbody>
@@ -182,14 +341,29 @@
         </div>
       </div>
 
-      <!-- ── VIEW: SALES ─────────────────────────────────────────────────── -->
+      <!-- -- VIEW: SALES --------------------------------------------------- -->
       <div id="view-sales" class="view" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Sales <span class="page-count" id="sales-count"></span></h1>
           <div class="page-actions">
             <input type="text" id="sales-search" class="search-input" placeholder="Search…" oninput="renderSales()" />
+            <button class="btn-secondary" onclick="exportCSV('sales')" title="Export CSV">⬇ Export</button>
             <button class="btn-add btn-add-sales" onclick="openSaleModal(null)">+ Add Sale</button>
           </div>
+        </div>
+        <!-- Quick Filters -->
+        <div class="filter-bar" id="sales-filters">
+          <select id="filter-platform" class="filter-select" onchange="renderSales()">
+            <option value="">All Platforms</option>
+          </select>
+          <select id="filter-profitloss" class="filter-select" onchange="renderSales()">
+            <option value="">All Sales</option>
+            <option value="profit">Profit Only</option>
+            <option value="loss">Loss Only</option>
+          </select>
+          <input type="date" id="filter-date-from" class="filter-input" onchange="renderSales()" title="From date" />
+          <input type="date" id="filter-date-to" class="filter-input" onchange="renderSales()" title="To date" />
+          <button class="filter-clear" onclick="clearSalesFilters()">Clear</button>
         </div>
         <div class="stats-row" id="sales-stats-row">
           <div class="mini-stat"><span class="mini-label">Spent</span><span class="mini-val" id="ss-spent">—</span></div>
@@ -201,14 +375,14 @@
           <div class="table-scroll">
             <table class="data-table">
               <thead><tr>
-                <th>Product</th>
-                <th class="hide-sm">Size</th>
-                <th class="hide-sm">Platform</th>
-                <th>Cost</th>
-                <th>Sold For</th>
-                <th class="hide-sm">Fees</th>
-                <th>Profit</th>
-                <th class="hide-sm">Date</th>
+                <th class="sortable" onclick="sortTable('sales','productName')">Product <span class="sort-icon" id="sort-sales-productName"></span></th>
+                <th class="hide-sm sortable" onclick="sortTable('sales','size')">Size <span class="sort-icon" id="sort-sales-size"></span></th>
+                <th class="hide-sm sortable" onclick="sortTable('sales','platform')">Platform <span class="sort-icon" id="sort-sales-platform"></span></th>
+                <th class="sortable" onclick="sortTable('sales','buyPrice')">Cost <span class="sort-icon" id="sort-sales-buyPrice"></span></th>
+                <th class="sortable" onclick="sortTable('sales','sellPrice')">Sold For <span class="sort-icon" id="sort-sales-sellPrice"></span></th>
+                <th class="hide-sm sortable" onclick="sortTable('sales','fees')">Fees <span class="sort-icon" id="sort-sales-fees"></span></th>
+                <th class="sortable" onclick="sortTable('sales','_profit')">Profit <span class="sort-icon" id="sort-sales-_profit"></span></th>
+                <th class="hide-sm sortable" onclick="sortTable('sales','date')">Date <span class="sort-icon" id="sort-sales-date"></span></th>
                 <th></th>
               </tr></thead>
               <tbody id="sales-tbody"></tbody>
@@ -222,7 +396,7 @@
         </div>
       </div>
 
-      <!-- ── VIEW: PACKAGES ─────────────────────────────────────────────── -->
+      <!-- -- VIEW: PACKAGES ----------------------------------------------- -->
       <div id="view-packages" class="view" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Packages <span class="page-count" id="pkg-count"></span></h1>
@@ -238,7 +412,7 @@
         </div>
       </div>
 
-      <!-- ── VIEW: ANALYTICS ─────────────────────────────────────────────── -->
+      <!-- -- VIEW: ANALYTICS ----------------------------------------------- -->
       <div id="view-analytics" class="view" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Analytics</h1>
@@ -261,7 +435,7 @@
         </div>
       </div>
 
-      <!-- ── VIEW: ADMIN ─────────────────────────────────────────────────── -->
+      <!-- -- VIEW: ADMIN --------------------------------------------------- -->
       <div id="view-admin" class="view" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Admin Panel</h1>
@@ -287,6 +461,41 @@
         </div>
       </div>
 
+      <!-- -- VIEW: PROFILE ----------------------------------------------- -->
+      <div id="view-profile" class="view">
+        <div class="view-header">
+          <h1>Profile & Settings</h1>
+        </div>
+        <div class="profile-page">
+          <div class="profile-card">
+            <img id="profile-avatar" class="profile-avatar" src="" alt="" />
+            <h2 id="profile-username" class="profile-username"></h2>
+            <span id="profile-discord-id" class="profile-discord-id"></span>
+            <span id="profile-joined" class="profile-joined"></span>
+          </div>
+
+          <div class="settings-section">
+            <h3 class="settings-heading">Preferences</h3>
+            <label class="settings-toggle-row">
+              <span>Dark mode</span>
+              <input type="checkbox" id="set-dark-mode" onchange="toggleTheme()" />
+            </label>
+            <label class="settings-toggle-row">
+              <span>Show onboarding on next login</span>
+              <input type="checkbox" id="set-replay-onboarding" onchange="toggleReplayOnboarding()" />
+            </label>
+          </div>
+
+          <div class="settings-section settings-danger">
+            <h3 class="settings-heading">Account</h3>
+            <button class="btn-secondary danger" onclick="logout()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 
@@ -296,13 +505,13 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
       <span>Home</span>
     </button>
-    <button class="bnav-item" data-view="inventory" onclick="switchView('inventory')">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-      <span>Inventory</span>
-    </button>
     <button class="bnav-item" data-view="sales" onclick="switchView('sales')">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
       <span>Sales</span>
+    </button>
+    <button class="bnav-item" data-view="inventory" onclick="switchView('inventory')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      <span>Inventory</span>
     </button>
     <button class="bnav-item" data-view="packages" onclick="switchView('packages')">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
@@ -316,9 +525,9 @@
 
 </div><!-- #screen-app -->
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- --------------------------------------------------------------------------
      MODAL: INVENTORY
-══════════════════════════════════════════════════════════════════════════ -->
+-------------------------------------------------------------------------- -->
 <div id="modal-inv" class="modal-overlay" style="display:none" onclick="modalOverlayClick(event,'modal-inv')">
   <div class="modal-box">
     <div class="modal-header">
@@ -380,9 +589,9 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- --------------------------------------------------------------------------
      MODAL: SALE
-══════════════════════════════════════════════════════════════════════════ -->
+-------------------------------------------------------------------------- -->
 <div id="modal-sale" class="modal-overlay" style="display:none" onclick="modalOverlayClick(event,'modal-sale')">
   <div class="modal-box">
     <div class="modal-header">
@@ -436,9 +645,9 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- --------------------------------------------------------------------------
      MODAL: PACKAGE
-══════════════════════════════════════════════════════════════════════════ -->
+-------------------------------------------------------------------------- -->
 <div id="modal-pkg" class="modal-overlay" style="display:none" onclick="modalOverlayClick(event,'modal-pkg')">
   <div class="modal-box">
     <div class="modal-header">
@@ -492,9 +701,9 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- --------------------------------------------------------------------------
      MODAL: DELETE CONFIRM
-══════════════════════════════════════════════════════════════════════════ -->
+-------------------------------------------------------------------------- -->
 <div id="modal-delete" class="modal-overlay modal-sm" style="display:none" onclick="modalOverlayClick(event,'modal-delete')">
   <div class="modal-box">
     <div class="modal-header">
@@ -520,6 +729,71 @@
   </div>
 </div>
 
+<!-- --------------------------------------------------------------------------
+     ONBOARDING OVERLAY
+-------------------------------------------------------------------------- -->
+<div id="onboarding-overlay" class="onboarding-overlay" style="display:none">
+  <div class="onboarding-card">
+    <div class="onboarding-step" data-step="0">
+      <div class="onboarding-icon">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </div>
+      <h2>Welcome to Resell Tracker</h2>
+      <p>Your all-in-one dashboard for tracking inventory, sales, packages, and analytics. Let's take a quick tour.</p>
+    </div>
+    <div class="onboarding-step" data-step="1" style="display:none">
+      <div class="onboarding-icon ob-inv">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+      </div>
+      <h2>Inventory</h2>
+      <p>Add items you own with cost, size, and estimated resale value. Photos supported too.</p>
+    </div>
+    <div class="onboarding-step" data-step="2" style="display:none">
+      <div class="onboarding-icon ob-sales">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </div>
+      <h2>Sales</h2>
+      <p>Log every sale with platform, fees, and quantity. Profit is calculated automatically. Filter and export to CSV.</p>
+    </div>
+    <div class="onboarding-step" data-step="3" style="display:none">
+      <div class="onboarding-icon ob-pkg">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      </div>
+      <h2>Packages</h2>
+      <p>Track shipments across carriers with live status. Open any package on the carrier's website with one click.</p>
+    </div>
+    <div class="onboarding-step" data-step="4" style="display:none">
+      <div class="onboarding-icon ob-analytics">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <h2>Analytics</h2>
+      <p>Charts, profit trends, monthly breakdowns, and ROI — see how your business is performing at a glance.</p>
+    </div>
+    <div class="onboarding-step" data-step="5" style="display:none">
+      <div class="onboarding-icon ob-ready">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      </div>
+      <h2>You're all set!</h2>
+      <p>Start by adding your first inventory item. Happy flipping!</p>
+    </div>
+
+    <div class="onboarding-dots">
+      <span class="ob-dot active" data-dot="0"></span>
+      <span class="ob-dot" data-dot="1"></span>
+      <span class="ob-dot" data-dot="2"></span>
+      <span class="ob-dot" data-dot="3"></span>
+      <span class="ob-dot" data-dot="4"></span>
+      <span class="ob-dot" data-dot="5"></span>
+    </div>
+
+    <div class="onboarding-actions">
+      <button class="btn-secondary" id="ob-skip" onclick="closeOnboarding()">Skip</button>
+      <button class="btn-primary" id="ob-next" onclick="nextOnboardingStep()">Next</button>
+    </div>
+  </div>
+</div>
+
+<div id="cursor-glow" class="cursor-glow" aria-hidden="true"></div>
 <script src="app.js"></script>
 </body>
 </html>

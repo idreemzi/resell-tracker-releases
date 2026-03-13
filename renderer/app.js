@@ -8,11 +8,13 @@ let isAdmin        = false
 let monitors = []
 let monitorEditId = null
 const ADMIN_DISCORD_ID = '313100007551270912'
-const LOCAL_SITES = new Set(['bestbuy', 'amazon', 'shopify', 'lego'])
+const LOCAL_SITES = new Set(['bestbuy', 'amazon', 'shopify', 'lego', 'funko', 'nike'])
 
 // Live Shopify feed state
 const shopifyFeeds = new Map()  // monitorId → { monitorName, products, baseUrl, updatedAt }
 let activeFeedMonitorId = null
+let feedInstockOnly = false
+let feedSearchQuery  = ''
 
 let chartYear = new Date().getFullYear()
 const chartVisible = { spent: true, revenue: true, profit: true }
@@ -89,6 +91,21 @@ function esc(s) {
 
 function today() { return new Date().toISOString().slice(0, 10) }
 
+function playAlertSound(times = 1) {
+  try {
+    const audio = new Audio('./alert.wav')
+    audio.volume = 0.7
+    audio.play().catch(() => {})
+    for (let i = 1; i < times; i++) {
+      setTimeout(() => {
+        const a = new Audio('./alert.wav')
+        a.volume = 0.7
+        a.play().catch(() => {})
+      }, i * 600)
+    }
+  } catch {}
+}
+
 // Edit/delete SVG icons (reused in rows)
 const EDIT_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`
 const DEL_ICON  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`
@@ -102,6 +119,7 @@ const ACTION_BTNS_PKG = `<div class="row-actions"><button class="btn-row btn-ref
 // ── Boot ──────────────────────────────────────────────────────────────────────
 function init() {
   bindEvents()
+  bindProxyEvents()
   loadData()
   // Sync toggle state to match whatever theme localStorage applied on load
   const dark = localStorage.getItem('rt-theme') === 'dark'
@@ -109,9 +127,38 @@ function init() {
   initStatusBar()
   initNavUser()
   initEbayDarkMode()
+  initCheckoutWebview()
   initHome()
   initMonitorPush()
   initDiscordKeywords()
+  initDiscordFeed()
+  initProfileModal()
+  startLaunchCountdown()
+}
+
+function startLaunchCountdown() {
+  setInterval(() => {
+    document.querySelectorAll('.feed-launch-badge[data-launch]').forEach(badge => {
+      const ms   = parseInt(badge.dataset.launch)
+      const diff = ms - Date.now()
+      if (diff <= 0) {
+        badge.textContent = '🟢 Live Now'
+        badge.className = 'feed-launch-badge badge-live'
+        badge.removeAttribute('data-launch')
+        return
+      }
+      const days = Math.floor(diff / 864e5)
+      const hrs  = Math.floor(diff / 36e5)
+      const mins = Math.floor((diff % 36e5) / 60000)
+      const secs = Math.floor((diff % 60000) / 1000)
+      let label
+      if (days >= 1)      label = `in ${days}d ${hrs % 24}h`
+      else if (hrs >= 1)  label = `in ${hrs}h ${mins}m`
+      else if (mins >= 1) label = `in ${mins}m ${secs}s`
+      else                label = `in ${secs}s`
+      badge.textContent = `Drops ${label}`
+    })
+  }, 1000)
 }
 
 async function initNavUser() {
@@ -172,9 +219,12 @@ async function loadData() {
   }
   if (isAdmin) {
     try { monitors = await window.api.monitors.getAll() } catch { monitors = [] }
-    $('tab-monitors').style.display = ''
-    $('tab-discord').style.display  = ''
+    $('tab-monitors').style.display      = ''
+    $('tab-discord').style.display       = ''
+    $('tab-proxies').style.display       = ''
+    $('nav-admin-divider').style.display = ''
     renderMonitors()
+    loadProxies()
     // Start local monitors (Best Buy / Amazon) in Electron main process
     const localMonitors = monitors.filter(m => m.active && LOCAL_SITES.has(m.site_type))
     if (localMonitors.length) window.api.localMonitors.start(localMonitors).catch(() => {})
@@ -878,10 +928,64 @@ function bindEvents() {
   $('btn-add-inv').addEventListener('click',  () => openInvModal())
   $('btn-add-pkg').addEventListener('click',  () => openPkgModal())
 
+  // Discord settings modal
+  $('btn-discord-settings').addEventListener('click', async () => {
+    $('modal-discord-settings').style.display = 'flex'
+    // Load current token (masked)
+    try {
+      const tok = await window.api.selfbot.getToken()
+      $('discord-token-input').value = tok || ''
+      $('discord-token-status').textContent = ''
+    } catch {}
+  })
+  $('modal-discord-settings-close').addEventListener('click', () => {
+    $('modal-discord-settings').style.display = 'none'
+  })
+  $('modal-discord-settings').addEventListener('click', e => {
+    if (e.target.id === 'modal-discord-settings') $('modal-discord-settings').style.display = 'none'
+  })
+
+  // Token save
+  $('btn-discord-token-save').addEventListener('click', async () => {
+    const token = $('discord-token-input').value.trim()
+    if (!token) return
+    const statusEl = $('discord-token-status')
+    statusEl.textContent = 'Saving…'
+    statusEl.style.color = 'var(--text-dim)'
+    const res = await window.api.selfbot.setToken(token)
+    if (res?.ok) {
+      statusEl.textContent = '✓ Saved — selfbot restarting…'
+      statusEl.style.color = 'var(--green, #22c55e)'
+      $('discord-bot-status').textContent = '🟡 Restarting...'
+    } else {
+      statusEl.textContent = '✗ ' + (res?.error || 'Failed')
+      statusEl.style.color = 'var(--red, #ef4444)'
+    }
+  })
+  $('discord-token-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('btn-discord-token-save').click()
+  })
+
+  // Reveal toggle for token field
+  document.querySelector('[data-target="discord-token-input"]')?.addEventListener('click', () => {
+    const inp = $('discord-token-input')
+    inp.type = inp.type === 'password' ? 'text' : 'password'
+  })
+
   // Discord alert log clear
   $('btn-discord-clear')?.addEventListener('click', () => {
     const log = $('discord-alert-log')
     log.innerHTML = '<div id="discord-log-empty" style="font-size:13px;color:var(--text-dim);text-align:center;padding:20px 0">No alerts yet</div>'
+  })
+
+  // Feed in-stock filter + search
+  $('btn-feed-instock')?.addEventListener('click', () => {
+    feedInstockOnly = !feedInstockOnly
+    renderShopifyFeed()
+  })
+  $('feed-search')?.addEventListener('input', e => {
+    feedSearchQuery = e.target.value
+    renderShopifyFeed()
   })
 
   // Market Lookup
@@ -977,6 +1081,14 @@ function bindEvents() {
   $('btn-settings-cancel').addEventListener('click', closeSettingsModal)
   $('btn-settings-save').addEventListener('click', saveSettings)
 
+  $('btn-show-features').addEventListener('click', () => { $('modal-features').style.display = 'flex' })
+  $('modal-features-close').addEventListener('click', () => { $('modal-features').style.display = 'none' })
+  $('modal-features').addEventListener('click', e => { if (e.target === $('modal-features')) $('modal-features').style.display = 'none' })
+
+  $('btn-show-whats-new').addEventListener('click', () => { $('modal-whats-new').style.display = 'flex' })
+  $('modal-whats-new-close').addEventListener('click', () => { $('modal-whats-new').style.display = 'none' })
+  $('modal-whats-new').addEventListener('click', e => { if (e.target === $('modal-whats-new')) $('modal-whats-new').style.display = 'none' })
+
   $('btn-logout').addEventListener('click', async () => {
     await window.api.auth.logout()
     window.location.href = 'login.html'
@@ -984,6 +1096,17 @@ function bindEvents() {
 
   $('btn-dashboard').addEventListener('click', () => {
     window.api.openExternal('https://discord.com/channels/@me')
+  })
+  $('btn-open-profile').addEventListener('click', () => { closeSettingsModal(); openProfileModal() })
+  $('modal-profile-close').addEventListener('click', closeProfileModal)
+  $('btn-profile-cancel').addEventListener('click', closeProfileModal)
+  $('btn-profile-save').addEventListener('click', saveProfile)
+  $('modal-profile').addEventListener('click', e => { if (e.target.id === 'modal-profile') closeProfileModal() })
+  document.querySelectorAll('.af-reveal').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = $(btn.dataset.target)
+      input.type = input.type === 'password' ? 'text' : 'password'
+    })
   })
   $('modal-settings').addEventListener('click', e => { if (e.target.id === 'modal-settings') closeSettingsModal() })
 
@@ -1087,6 +1210,15 @@ function bindEvents() {
 
   // Monitors
   $('btn-add-monitor').addEventListener('click', () => openMonitorModal())
+  $('btn-test-nike-alert').addEventListener('click', () => showNikeAlert({
+    isNike: true,
+    type: 'live',
+    title: 'Air Jordan 13 Retro — White/True Red',
+    variant: 'DJ3004-102',
+    url: 'https://www.nike.com/launch/t/air-jordan-13-retro',
+    image: '',
+    sizes: ['7','7.5','8','8.5','9','9.5','10','10.5','11','12','13']
+  }))
   $('modal-monitor-close').addEventListener('click', () => { $('modal-monitor').style.display = 'none' })
   $('modal-monitor').addEventListener('click', e => { if (e.target === $('modal-monitor')) $('modal-monitor').style.display = 'none' })
 
@@ -1123,6 +1255,14 @@ function bindEvents() {
       keywords   = !isProduct ? $('mon-keywords').value.trim() : null
       if (!siteUrl) { $('mon-url').focus(); return }
       if (isProduct && !productUrl) { $('mon-product-url').focus(); return }
+    } else if (monitorSiteType === 'funko') {
+      siteUrl    = $('mon-url').value.trim() || 'https://funko.com/new-featured/new-releases/'
+      productUrl = null
+      keywords   = $('mon-keywords').value.trim()
+    } else if (monitorSiteType === 'nike') {
+      siteUrl    = $('mon-url').value.trim() || 'https://api.nike.com/product_feed/threads/v2/?anchor=0&count=60&filter=marketplace(US)&filter=language(en)&filter=channelId(010794e5-35fe-4e32-aaff-cd2c74f89d61)'
+      productUrl = null
+      keywords   = $('mon-keywords').value.trim()
     } else {
       const retailUrl = $('mon-retail-url').value.trim()
       if (!retailUrl) { $('mon-retail-url').focus(); return }
@@ -1163,7 +1303,7 @@ function bindEvents() {
       const created = await window.api.monitors.add(payload)
       if (!created?.error) {
         monitors.unshift(created)
-        if (LOCAL_SITES.has(created.site_type) && created.active) window.api.localMonitors.start([created]).catch(() => {})
+if (LOCAL_SITES.has(created.site_type) && created.active) window.api.localMonitors.start([created]).catch(() => {})
       }
     }
 
@@ -1259,7 +1399,26 @@ function bindEvents() {
   // Feed tab switching + ATC size click
   document.addEventListener('click', e => {
     const atcBtn = e.target.closest('[data-atc]')
-    if (atcBtn) { e.stopPropagation(); window.api.openExternal(atcBtn.dataset.atc); return }
+    if (atcBtn) { e.stopPropagation(); openCheckoutWebview(atcBtn.dataset.atc); return }
+    const copyBtn = e.target.closest('.feed-copy-btn')
+    if (copyBtn) {
+      e.stopPropagation()
+      navigator.clipboard.writeText(copyBtn.dataset.copy)
+      copyBtn.textContent = '✓'
+      setTimeout(() => { copyBtn.textContent = '⎘' }, 1500)
+      return
+    }
+    const resellBtn = e.target.closest('.feed-resell-btn')
+    if (resellBtn) { e.stopPropagation(); window.api.openExternal(resellBtn.dataset.ext); return }
+    const styleColor = e.target.closest('.feed-style-color')
+    if (styleColor) {
+      e.stopPropagation()
+      navigator.clipboard.writeText(styleColor.dataset.copy)
+      const orig = styleColor.textContent
+      styleColor.textContent = '✓ copied'
+      setTimeout(() => { styleColor.textContent = orig }, 1500)
+      return
+    }
     const btn = e.target.closest('.feed-tab-btn')
     if (btn?.dataset.feedId) { activeFeedMonitorId = btn.dataset.feedId; renderShopifyFeed() }
     const card = e.target.closest('.feed-product-card')
@@ -1284,6 +1443,7 @@ async function openSettingsModal() {
   const dark = settings.darkMode || false
   $('dark-mode-track').classList.toggle('on', dark)
 
+
   // Populate Discord profile card
   const user = authResult?.user
   if (user) {
@@ -1304,7 +1464,115 @@ async function openSettingsModal() {
 
 function closeSettingsModal() { $('modal-settings').style.display = 'none' }
 
-function saveSettings() {
+// ── Shipping Profiles ─────────────────────────────────────────────────────────
+let _profileSettings = null   // cache settings while modal is open
+let _activeProfileIdx = 0
+
+function profileFieldsFromForm() {
+  return {
+    name:      $('af-profile-name').value.trim() || 'Profile 1',
+    firstName: $('af-first').value.trim(),
+    lastName:  $('af-last').value.trim(),
+    email:     $('af-email').value.trim(),
+    phone:     $('af-phone').value.trim(),
+    address1:  $('af-addr1').value.trim(),
+    address2:  $('af-addr2').value.trim(),
+    city:      $('af-city').value.trim(),
+    state:     $('af-state').value.trim(),
+    zip:       $('af-zip').value.trim(),
+    country:   $('af-country').value.trim(),
+    ccName:    $('af-cc-name').value.trim(),
+    ccNumber:  $('af-cc-number').value.trim(),
+    ccExpiry:  $('af-cc-expiry').value.trim(),
+    ccCvv:     $('af-cc-cvv').value.trim(),
+  }
+}
+
+function fillFormFromProfile(p) {
+  p = p || {}
+  $('af-profile-name').value = p.name      || ''
+  $('af-first').value        = p.firstName || ''
+  $('af-last').value         = p.lastName  || ''
+  $('af-email').value        = p.email     || ''
+  $('af-phone').value        = p.phone     || ''
+  $('af-addr1').value        = p.address1  || ''
+  $('af-addr2').value        = p.address2  || ''
+  $('af-city').value         = p.city      || ''
+  $('af-state').value        = p.state     || ''
+  $('af-zip').value          = p.zip       || ''
+  $('af-country').value      = p.country   || ''
+  $('af-cc-name').value      = p.ccName    || ''
+  $('af-cc-number').value    = p.ccNumber  || ''
+  $('af-cc-expiry').value    = p.ccExpiry  || ''
+  $('af-cc-cvv').value       = p.ccCvv     || ''
+}
+
+function renderProfileSwitcher(profiles, activeIdx) {
+  const sel = $('profile-switcher')
+  sel.innerHTML = profiles.map((p, i) =>
+    `<option value="${i}" ${i === activeIdx ? 'selected' : ''}>${esc(p.name || `Profile ${i+1}`)}</option>`
+  ).join('')
+  $('btn-profile-delete').style.display = profiles.length > 1 ? '' : 'none'
+}
+
+async function openProfileModal() {
+  _profileSettings = await window.api.getSettings()
+  // Migrate legacy autofill → profiles array
+  if (!_profileSettings.profiles) {
+    const legacy = _profileSettings.autofill || {}
+    _profileSettings.profiles = [{ name: 'Default', ...legacy }]
+    _profileSettings.activeProfile = 0
+  }
+  _activeProfileIdx = _profileSettings.activeProfile || 0
+  if (_activeProfileIdx >= _profileSettings.profiles.length) _activeProfileIdx = 0
+
+  renderProfileSwitcher(_profileSettings.profiles, _activeProfileIdx)
+  fillFormFromProfile(_profileSettings.profiles[_activeProfileIdx])
+  $('modal-profile').style.display = 'flex'
+}
+
+function closeProfileModal() { $('modal-profile').style.display = 'none' }
+
+async function saveProfile() {
+  if (!_profileSettings) return
+  _profileSettings.profiles[_activeProfileIdx] = profileFieldsFromForm()
+  _profileSettings.activeProfile = _activeProfileIdx
+  // Keep autofill pointing at active profile for backwards compat with runAutofill
+  _profileSettings.autofill = _profileSettings.profiles[_activeProfileIdx]
+  await window.api.setSettings(_profileSettings)
+  closeProfileModal()
+}
+
+function initProfileModal() {
+  $('profile-switcher').addEventListener('change', e => {
+    // Save current edits before switching
+    if (_profileSettings) _profileSettings.profiles[_activeProfileIdx] = profileFieldsFromForm()
+    _activeProfileIdx = parseInt(e.target.value, 10)
+    fillFormFromProfile(_profileSettings.profiles[_activeProfileIdx])
+  })
+
+  $('btn-profile-new').addEventListener('click', () => {
+    if (!_profileSettings) return
+    const newP = { name: `Profile ${_profileSettings.profiles.length + 1}` }
+    _profileSettings.profiles.push(newP)
+    _activeProfileIdx = _profileSettings.profiles.length - 1
+    renderProfileSwitcher(_profileSettings.profiles, _activeProfileIdx)
+    fillFormFromProfile(newP)
+    $('af-profile-name').focus()
+  })
+
+  $('btn-profile-delete').addEventListener('click', () => {
+    if (!_profileSettings || _profileSettings.profiles.length <= 1) return
+    _profileSettings.profiles.splice(_activeProfileIdx, 1)
+    _activeProfileIdx = Math.max(0, _activeProfileIdx - 1)
+    renderProfileSwitcher(_profileSettings.profiles, _activeProfileIdx)
+    fillFormFromProfile(_profileSettings.profiles[_activeProfileIdx])
+  })
+}
+
+async function saveSettings() {
+  const existing = await window.api.getSettings()
+  await window.api.setSettings({ ...existing })
   closeSettingsModal()
 }
 
@@ -1591,7 +1859,7 @@ function renderMonitors() {
         <div class="monitor-status-dot ${active ? 'dot-active' : 'dot-paused'}"></div>
         <span class="monitor-name">${esc(m.name)}</span>
         <span class="monitor-badge ${active ? 'badge-active' : 'badge-paused'}">${active ? 'Active' : 'Paused'}</span>
-        ${m.site_type && m.site_type !== 'shopify' ? `<span class="monitor-badge monitor-site-badge monitor-site-${esc(m.site_type)}">${({walmart:'Walmart',target:'Target',amazon:'Amazon',bestbuy:'Best Buy',lego:'LEGO'})[m.site_type]||m.site_type}</span>` : ''}
+        ${m.site_type && m.site_type !== 'shopify' ? `<span class="monitor-badge monitor-site-badge monitor-site-${esc(m.site_type)}">${({walmart:'Walmart',target:'Target',amazon:'Amazon',bestbuy:'Best Buy',lego:'LEGO',funko:'Funko',nike:'Nike'})[m.site_type]||m.site_type}</span>` : ''}
         ${m.product_url && m.site_type === 'shopify' ? `<span class="monitor-badge" style="background:var(--teal-light);color:var(--teal)">Product</span>` : ''}
         ${m.price_alert ? `<span class="monitor-badge" style="background:var(--orange-light);color:var(--orange)">💰 Price</span>` : ''}
         <div class="monitor-actions">
@@ -1639,7 +1907,13 @@ function renderShopifyFeed() {
   const ago = feed.updatedAt ? Math.round((Date.now() - feed.updatedAt) / 1000) : null
   $('feed-updated').textContent = ago !== null ? `Updated ${ago < 5 ? 'just now' : ago + 's ago'}` : ''
 
-  $('shopify-feed-grid').innerHTML = (feed.products || []).map(p => {
+  let products = feed.products || []
+  if (feedInstockOnly) products = products.filter(p => (p.variants || []).some(v => v.available))
+  if (feedSearchQuery)  products = products.filter(p => p.title.toLowerCase().includes(feedSearchQuery.toLowerCase()))
+
+  $('btn-feed-instock').classList.toggle('active', feedInstockOnly)
+
+  $('shopify-feed-grid').innerHTML = products.map(p => {
     const image = p.images?.[0]?.src || ''
     const price = p.variants?.[0]?.price ? `$${parseFloat(p.variants[0].price).toFixed(2)}` : ''
     const variantBtns = (p.variants || []).map(v =>
@@ -1647,12 +1921,49 @@ function renderShopifyFeed() {
         ${v.available ? `data-atc="${esc(feed.baseUrl)}/cart/${v.id}:1" title="Click to ATC"` : ''}
       >${esc(v.title)}</span>`
     ).join('')
-    const productUrl = `${feed.baseUrl}/products/${p.handle}`
+    const productUrl = (p.handle && p.handle.startsWith('http')) ? p.handle : `${feed.baseUrl}/products/${p.handle}`
+    let launchBadge = ''
+    if (p.launchDate) {
+      const ms = new Date(p.launchDate).getTime()
+      const diff = ms - Date.now()
+      const status = p.status
+      if (status === 'upcoming') {
+        const days = Math.floor(diff / 864e5)
+        const hrs  = Math.round(diff / 36e5)
+        const label = days >= 1 ? `in ${days}d` : hrs >= 1 ? `in ${hrs}h` : 'soon'
+        launchBadge = `<span class="feed-launch-badge badge-upcoming" data-launch="${ms}">Drops ${label}</span>`
+      } else if (status === 'live') {
+        launchBadge = `<span class="feed-launch-badge badge-live">🟢 Live Now</span>`
+      } else if (status === 'draw_open') {
+        launchBadge = `<span class="feed-launch-badge badge-live">🎟 Draw Open</span>`
+      } else {
+        const d = new Date(p.launchDate)
+        launchBadge = `<span class="feed-launch-badge badge-past">${d.toLocaleDateString([], {month:'short',day:'numeric'})}</span>`
+      }
+    }
+    const styleColor = p.styleColor || ''
+    const methodLabel = p.variants?.[0]?.title || ''
+    const HYPE_KEYWORDS = ['travis scott','off-white','fragment','union','fear of god','fog','sacai','acronym','stussy','supreme','cactus jack','j balvin','drake','nocta','cpfm','comme des','atmos','patta','bodega','kaws','pigalle','undercover']
+    const titleLower = p.title.toLowerCase()
+    const isHyped = methodLabel === 'Draw' || HYPE_KEYWORDS.some(k => titleLower.includes(k))
+    const searchQ = encodeURIComponent(styleColor || p.title)
+    const stockxUrl = `https://stockx.com/search?s=${searchQ}`
+    const goatUrl   = `https://www.goat.com/search?query=${searchQ}`
     return `<div class="feed-product-card" data-url="${esc(productUrl)}">
       ${image ? `<img class="feed-product-img" src="${esc(image)}" loading="lazy" />` : '<div class="feed-product-img feed-img-placeholder"></div>'}
+      ${launchBadge}
+      <button class="feed-copy-btn" data-copy="${esc(p.title)}" title="Copy name">⎘</button>
       <div class="feed-product-info">
-        <span class="feed-product-title">${esc(p.title)}</span>
-        ${price ? `<span class="feed-product-price">${esc(price)}</span>` : ''}
+        <span class="feed-product-title">${isHyped ? '🔥 ' : ''}${esc(p.title)}</span>
+        ${styleColor ? `<span class="feed-style-color" data-copy="${esc(styleColor)}" title="Click to copy style color">${esc(styleColor)}</span>` : ''}
+        <div class="feed-resell-links">
+          <a class="feed-resell-btn" data-ext="${esc(stockxUrl)}" title="Check StockX">StockX</a>
+          <a class="feed-resell-btn" data-ext="${esc(goatUrl)}" title="Check GOAT">GOAT</a>
+        </div>
+        <div class="feed-drop-info">
+          <span class="feed-drop-platform">SNKRS</span>
+          ${methodLabel ? `<span class="feed-drop-method">${esc(methodLabel)}</span>` : ''}
+        </div>
       </div>
       <div class="feed-variants">${variantBtns}</div>
     </div>`
@@ -1683,42 +1994,347 @@ function showMonitorToast({ type, monitorName, product, variants }) {
 }
 
 // Register push channels from main process (called once at init)
+function setSelfbotStatus(running) {
+  const status = $('discord-bot-status')
+  const toggle = $('btn-selfbot-toggle')
+  if (!status) return
+  status.textContent = running ? '🟢 Online' : '🔴 Offline'
+  if (toggle) {
+    toggle.textContent = running ? 'Stop' : 'Start'
+    toggle.style.color = running ? 'var(--red,#ef4444)' : 'var(--green,#22c55e)'
+  }
+}
+
 async function initDiscordKeywords() {
   const input  = $('discord-keywords-input')
-  const status = $('discord-bot-status')
   if (!input || !window.api.selfbot) return
 
-  // Load saved keywords
+  // Load saved keywords as chips
   const kws = await window.api.selfbot.getKeywords()
-  if (kws) input.value = kws
+  let keywordList = kws ? kws.split(',').map(k => k.trim()).filter(Boolean) : []
+  renderKeywordList(keywordList)
 
-  // Show bot status
+  // Initial status — poll until online (selfbot starts after 3s delay)
   const running = await window.api.selfbot.status()
-  status.textContent = running ? '🟢 Running' : '🔴 Offline'
+  setSelfbotStatus(running)
+  if (!running) {
+    const poll = setInterval(async () => {
+      const r = await window.api.selfbot.status()
+      if (r) { setSelfbotStatus(true); clearInterval(poll) }
+    }, 2000)
+    setTimeout(() => clearInterval(poll), 15000)
+  }
 
-  $('btn-discord-keywords-save').addEventListener('click', async () => {
-    const res = await window.api.selfbot.setKeywords(input.value)
-    if (res?.ok) {
-      status.textContent = '🟡 Restarting...'
-      setTimeout(async () => {
-        const r = await window.api.selfbot.status()
-        status.textContent = r ? '🟢 Running' : '🔴 Offline'
-      }, 3000)
+  // Live status updates from main process
+  window.api.onSelfbotStatus(({ running }) => setSelfbotStatus(running))
+
+  // Toggle button
+  $('btn-selfbot-toggle').addEventListener('click', async () => {
+    const running = await window.api.selfbot.status()
+    if (running) {
+      await window.api.selfbot.stop()
+      setSelfbotStatus(false)
+    } else {
+      setSelfbotStatus(false)
+      $('discord-bot-status').textContent = '🟡 Starting...'
+      await window.api.selfbot.start()
     }
   })
+
+  // Add keyword
+  const addKeyword = async () => {
+    const val = input.value.trim()
+    if (!val || keywordList.includes(val)) { input.value = ''; return }
+    keywordList.push(val)
+    input.value = ''
+    const res = await window.api.selfbot.setKeywords(keywordList.join(', '))
+    if (res?.ok) { $('discord-bot-status').textContent = '🟡 Restarting...'; renderKeywordList(keywordList) }
+  }
+  $('btn-discord-keywords-save').addEventListener('click', addKeyword)
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') addKeyword() })
+
+  // Channel management
+  const channelIds = await window.api.selfbot.getChannels()
+  let channelNames = {}
+  try { channelNames = await window.api.selfbot.getChannelNames() } catch {}
+  renderChannelList(channelIds, channelNames)
+
+  $('btn-discord-channel-add').addEventListener('click', async () => {
+    const inp = $('discord-channel-input')
+    const id = inp.value.trim()
+    if (!id) return
+    const res = await window.api.selfbot.addChannel(id)
+    if (res?.ok) {
+      inp.value = ''
+      let names = {}
+      try { names = await window.api.selfbot.getChannelNames() } catch {}
+      renderChannelList(res.ids, names)
+    } else if (res?.error) showToast(res.error)
+  })
+
+  $('discord-channel-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('btn-discord-channel-add').click()
+  })
+}
+
+function renderKeywordList(keywords) {
+  const list = $('discord-keyword-list')
+  if (!list) return
+  if (!keywords || keywords.length === 0) {
+    list.innerHTML = '<span style="font-size:12px;color:var(--text-dim)">No keywords added yet</span>'
+    return
+  }
+  list.innerHTML = keywords.map(kw => `
+    <div class="channel-chip" style="background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.3);color:#22c55e">
+      <span>${esc(kw)}</span>
+      <button class="channel-chip-remove" data-kw="${esc(kw)}" style="color:#22c55e">✕</button>
+    </div>`).join('')
+  list.querySelectorAll('.channel-chip-remove').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const kw = btn.dataset.kw
+      const input = $('discord-keywords-input')
+      const kws = await window.api.selfbot.getKeywords()
+      const updated = kws.split(',').map(k => k.trim()).filter(k => k && k !== kw)
+      const res = await window.api.selfbot.setKeywords(updated.join(', '))
+      if (res?.ok) { renderKeywordList(updated); $('discord-bot-status').textContent = '🟡 Restarting...' }
+    })
+  })
+}
+
+function renderChannelList(ids, names = {}) {
+  const list = $('discord-channel-list')
+  if (!list) return
+  if (!ids || ids.length === 0) {
+    list.innerHTML = '<span style="font-size:12px;color:var(--text-dim)">No channels added yet</span>'
+    return
+  }
+  list.innerHTML = ids.map(id => {
+    const info = names[id]
+    const channelName = info?.channel || id
+    const guildName   = info?.guild   || null
+    const label = guildName
+      ? `${esc(guildName)} / #${esc(channelName)}`
+      : `#${esc(channelName)}`
+    return `
+    <div class="channel-chip" title="ID: ${esc(id)}">
+      ${guildName
+        ? `<span style="font-size:11px;opacity:.6;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(guildName)}</span>
+           <span style="font-size:11px;opacity:.35">/</span>
+           <span style="font-size:11px;opacity:.55">#</span><span class="channel-chip-id">${esc(channelName)}</span>`
+        : `<span style="font-size:11px;opacity:.55">#</span><span class="channel-chip-id">${esc(channelName)}</span>`
+      }
+      <button class="channel-chip-remove" data-id="${esc(id)}">✕</button>
+    </div>`
+  }).join('')
+  list.querySelectorAll('.channel-chip-remove').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const res = await window.api.selfbot.removeChannel(btn.dataset.id)
+      if (res?.ok) {
+        let names = {}
+        try { names = await window.api.selfbot.getChannelNames() } catch {}
+        renderChannelList(res.ids, names)
+      }
+    })
+  })
+}
+
+// ── Discord Cook Group Feed ───────────────────────────────────────────────────
+
+function feedTimeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1)  return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
+function appendFeedMessage(data) {
+  const log   = $('discord-feed-log')
+  const empty = $('discord-feed-empty')
+  if (empty) empty.style.display = 'none'
+
+  const el = document.createElement('div')
+  el.className = 'feed-msg-card'
+
+  const urlMatches = (data.content || '').match(/https?:\/\/\S+/g) || []
+  const allUrls    = [...new Set([...urlMatches, ...(data.urls || [])])]
+  const atcUrls    = data.atc_urls || []
+
+  const linksHtml = allUrls.length ? `<div class="feed-msg-links">${allUrls.map(u => {
+    const isAtc = atcUrls.includes(u)
+    const label = isAtc ? 'ATC' : 'Link'
+    const cls   = isAtc ? 'feed-msg-link-btn atc' : 'feed-msg-link-btn'
+    return `<button class="${cls}" data-ext="${esc(u)}">${label} →</button>`
+  }).join('')}</div>` : ''
+
+  const embedsHtml = (data.embeds || []).filter(e => e.title || e.description || e.image).map(e => `
+    <div class="feed-msg-embed" ${e.color ? `style="border-left-color:#${e.color.toString(16).padStart(6,'0')}"` : ''}>
+      ${e.image ? `<img class="feed-msg-embed-img" src="${esc(e.image)}" loading="lazy" onerror="this.style.display='none'" />` : ''}
+      ${e.title ? `<div class="feed-msg-embed-title">${esc(e.title)}</div>` : ''}
+      ${e.description ? `<div class="feed-msg-embed-desc">${esc(e.description).slice(0, 200)}</div>` : ''}
+    </div>`).join('')
+
+  const imagesHtml = (data.images || []).map(src =>
+    `<img class="feed-msg-image" src="${esc(src)}" loading="lazy" onerror="this.style.display='none'" />`
+  ).join('')
+
+  const contentText = (data.content || '').replace(/https?:\/\/\S+/g, '').trim()
+
+  el.innerHTML = `
+    <div class="feed-msg-header">
+      <span class="feed-msg-author">${esc(data.author)}</span>
+      <span class="feed-msg-channel">#${esc(data.channel)}</span>
+      <span class="feed-msg-time">${feedTimeAgo(data.timestamp)}</span>
+    </div>
+    ${contentText ? `<div class="feed-msg-content">${esc(contentText)}</div>` : ''}
+    ${embedsHtml}
+    ${imagesHtml}
+    ${linksHtml}`
+
+  el.querySelectorAll('[data-ext]').forEach(btn =>
+    btn.addEventListener('click', () => window.api.openExternal(btn.dataset.ext))
+  )
+
+  log.insertBefore(el, log.firstChild)
+
+  // cap at 100 messages
+  while (log.children.length > 101) log.removeChild(log.lastChild)
+}
+
+async function renderFeedChannelList() {
+  const list = $('discord-feed-channel-list')
+  if (!list) return
+  const ids = await window.api.selfbot.getFeedChannels()
+  if (!ids || ids.length === 0) {
+    list.innerHTML = '<span style="font-size:12px;color:var(--text-dim)">No feed channels yet</span>'
+    return
+  }
+  list.innerHTML = ids.map(id => `
+    <div class="channel-chip">
+      <span class="channel-chip-id">${esc(id)}</span>
+      <button class="channel-chip-remove" data-id="${esc(id)}">✕</button>
+    </div>`).join('')
+  list.querySelectorAll('.channel-chip-remove').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await window.api.selfbot.removeFeedChannel(btn.dataset.id)
+      renderFeedChannelList()
+    })
+  })
+}
+
+function initDiscordFeed() {
+  window.api.onDiscordFeed(data => appendFeedMessage(data))
+
+  $('btn-feed-clear').addEventListener('click', () => {
+    const log = $('discord-feed-log')
+    log.innerHTML = '<div id="discord-feed-empty" style="font-size:13px;color:var(--text-dim);text-align:center;padding:20px 0">No feed channels added yet — add a channel ID in Discord Settings</div>'
+  })
+
+  const addBtn   = $('btn-discord-feed-channel-add')
+  const addInput = $('discord-feed-channel-input')
+  if (addBtn && addInput) {
+    addBtn.addEventListener('click', async () => {
+      const id = addInput.value.trim()
+      if (!id) return
+      await window.api.selfbot.addFeedChannel(id)
+      addInput.value = ''
+      renderFeedChannelList()
+    })
+    addInput.addEventListener('keydown', e => { if (e.key === 'Enter') addBtn.click() })
+  }
+
+  // Load feed channel list whenever settings modal opens
+  const settingsBtn = $('btn-discord-settings')
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => renderFeedChannelList(), { capture: true })
+  }
+}
+
+function showNikeAlert(data) {
+  const isLive      = data.type === 'live' || data.type === 'draw_open' || data.type === 'method_change'
+  const container   = $('toast-container')
+
+  // Sound — 3x for live/draw, 1x for new announcement
+  playAlertSound(isLive ? 3 : 1)
+
+  // Flash window via main process
+  window.api.windowFlash?.()
+
+  // Auto-switch to monitors tab so feed is visible
+  if (isLive) switchView('monitors')
+
+  // Build toast
+  const toast = document.createElement('div')
+  toast.className = 'monitor-toast nike-alert' + (isLive ? ' nike-alert-live' : '')
+
+  const icons   = { live: '⚡', draw_open: '🎟', method_change: '🔄', new: '🆕' }
+  const labels  = { live: 'LIVE NOW', draw_open: 'DRAW OPEN', method_change: 'DRAW → FCFS', new: 'New Drop Announced' }
+  const sizes   = data.sizes || []
+  const sizeLinks = sizes.length
+    ? `<div class="nike-alert-sizes">${sizes.map(s =>
+        `<a class="nike-size-btn" data-ext="${esc(data.url)}">${esc(s)}</a>`
+      ).join('')}</div>`
+    : ''
+
+  toast.innerHTML = `
+    <div class="nike-alert-header">
+      <span class="nike-alert-icon">${icons[data.type] || '👟'}</span>
+      <span class="nike-alert-label">${labels[data.type] || 'Nike'}</span>
+      <button class="toast-close">✕</button>
+    </div>
+    <div class="nike-alert-title">${esc(data.title || 'Nike Drop')}</div>
+    ${data.variant ? `<div class="nike-alert-style">${esc(data.variant)}</div>` : ''}
+    ${sizeLinks}
+    <a class="nike-alert-cta" data-ext="${esc(data.url)}">Open Product Page →</a>`
+
+  toast.querySelectorAll('[data-ext]').forEach(el =>
+    el.addEventListener('click', e => { e.stopPropagation(); window.api.openExternal(el.dataset.ext) })
+  )
+  toast.querySelector('.toast-close').addEventListener('click', () => toast.remove())
+
+  // Persistent for live alerts — stays until manually closed
+  if (!isLive) setTimeout(() => { toast.classList.add('toast-exit'); setTimeout(() => toast.remove(), 400) }, 10000)
+
+  container.appendChild(toast)
 }
 
 function initMonitorPush() {
   if (!window.api.onMonitorAlert) return
-  window.api.onMonitorAlert(data => showMonitorToast(data))
+  window.api.onMonitorAlert(data => {
+    if (data.isNike) showNikeAlert(data)
+    else showMonitorToast(data)
+  })
+  window.api.onNikeBoost(({ active, productName, launchDate }) => {
+    if (!active) return
+    const mins = launchDate ? Math.max(1, Math.round((new Date(launchDate) - Date.now()) / 60000)) : '?'
+    const container = $('toast-container')
+    const toast = document.createElement('div')
+    toast.className = 'monitor-toast monitor-toast-restock'
+    toast.style.borderLeftColor = '#f05223'
+    toast.innerHTML = `
+      <div class="toast-icon">⚡</div>
+      <div class="toast-body">
+        <div class="toast-label">Nike · Boost Mode Active</div>
+        <div class="toast-title">${esc(productName)}</div>
+        <div class="toast-sizes">Drops in ~${mins} min · polling every 10s</div>
+      </div>
+      <button class="toast-close">✕</button>`
+    toast.querySelector('.toast-close').addEventListener('click', () => toast.remove())
+    container.appendChild(toast)
+    setTimeout(() => { toast.classList.add('toast-exit'); setTimeout(() => toast.remove(), 400) }, 10000)
+  })
   window.api.onShopifyFeed(data => {
     shopifyFeeds.set(data.monitorId, { monitorName: data.monitorName, products: data.products, baseUrl: data.baseUrl, updatedAt: Date.now() })
     if (document.getElementById('view-monitors')?.classList.contains('active')) renderShopifyFeed()
   })
   window.api.onDiscordKeyword(data => {
     showDiscordKeywordToast(data)
-    const atcUrl = (data.atc_urls || [])[0]
-    if (atcUrl) window.api.openExternal(atcUrl)
+    playAlertSound()
+    ;(data.atc_urls || []).forEach((url, i) =>
+      setTimeout(() => window.api.openExternal(url), i * 400)
+    )
   })
 }
 
@@ -1826,9 +2442,22 @@ function setMonitorSiteType(type) {
     btn.classList.toggle('active', btn.dataset.site === type)
   })
   const isShopify = type === 'shopify'
-  $('mon-shopify-fields').style.display = isShopify ? '' : 'none'
-  $('mon-retail-fields').style.display  = isShopify ? 'none' : ''
-  if (!isShopify) {
+  const isFunko   = type === 'funko'
+  const isNike    = type === 'nike'
+  $('mon-shopify-fields').style.display = (isShopify || isFunko || isNike) ? '' : 'none'
+  $('mon-retail-fields').style.display  = (isShopify || isFunko || isNike) ? 'none' : ''
+  // Hide Whole Site / Specific Product toggle for Funko and Nike (whole-site only)
+  $('mon-shopify-fields').querySelector('.monitor-type-toggle').style.display = (isFunko || isNike) ? 'none' : ''
+  if (isFunko) {
+    $('mon-url').placeholder = 'Funko collection URL (e.g. https://funko.com/new-featured/new-releases/)'
+    if (!$('mon-url').value) $('mon-url').value = 'https://funko.com/new-featured/new-releases/'
+  } else if (isNike) {
+    $('mon-url').placeholder = 'Leave blank for SNKRS feed, or paste custom Nike API URL'
+    $('mon-url').value = ''
+  } else if (isShopify) {
+    $('mon-url').placeholder = 'Shopify Site URL * (e.g. https://kith.com)'
+  }
+  if (!isShopify && !isFunko) {
     const hint = RETAIL_HINTS[type] || ''
     $('mon-retail-hint').textContent = hint
     $('mon-retail-hint-row').style.display = hint ? '' : 'none'
@@ -1869,6 +2498,179 @@ const EBAY_DARK_CSS = `
   [style*="color: black"], [style*="color:#000"] { color: #e0e0e0 !important; }
 `
 
+// ── Checkout Webview ──────────────────────────────────────────────────────────
+let _checkoutUrl = ''
+
+function openCheckoutWebview(url) {
+  _checkoutUrl = url
+  const wv    = $('checkout-webview')
+  const modal = $('modal-checkout')
+  const label = $('checkout-site-label')
+  const favicon = $('checkout-favicon')
+
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '')
+    label.textContent = host
+    favicon.src = `https://www.google.com/s2/favicons?sz=32&domain=${host}`
+    favicon.style.display = ''
+    favicon.onerror = () => { favicon.style.display = 'none' }
+  } catch { label.textContent = url }
+
+  wv.src = url
+  modal.style.display = 'flex'
+}
+
+async function runAutofill(wv) {
+  const settings = await window.api.getSettings()
+  const profiles = settings.profiles
+  const af = profiles
+    ? (profiles[settings.activeProfile || 0] || profiles[0] || {})
+    : (settings.autofill || {})
+  if (!Object.values(af).some(Boolean)) return
+
+  const script = `(async function() {
+    if (window.__rtAutofillActive) return
+    window.__rtAutofillActive = true
+
+    const d = ${JSON.stringify(af)}
+    const wait = ms => new Promise(r => setTimeout(r, ms))
+
+    function setVal(el, val) {
+      if (!el || val === undefined || val === '') return false
+      try {
+        const proto = el.tagName === 'SELECT'
+          ? window.HTMLSelectElement.prototype
+          : window.HTMLInputElement.prototype
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value').set
+        setter.call(el, val)
+      } catch { el.value = val }
+      ;['input','change','blur'].forEach(t =>
+        el.dispatchEvent(new Event(t, { bubbles: true }))
+      )
+      return true
+    }
+
+    function fill(selectors, val) {
+      if (!val) return false
+      for (const s of selectors) {
+        try { const el = document.querySelector(s); if (el && setVal(el, val)) return true } catch {}
+      }
+      return false
+    }
+
+    // For custom React combobox dropdowns (Shopify new checkout)
+    async function fillCombobox(triggerSels, val) {
+      if (!val) return false
+      for (const s of triggerSels) {
+        try {
+          const el = document.querySelector(s)
+          if (!el) continue
+          // Native select (old Shopify / other sites)
+          if (el.tagName === 'SELECT') {
+            const opts = [...el.options]
+            const match = opts.find(o =>
+              o.value.toLowerCase() === val.toLowerCase() ||
+              o.text.toLowerCase() === val.toLowerCase() ||
+              o.text.toLowerCase().startsWith(val.toLowerCase())
+            )
+            if (match) { setVal(el, match.value); return true }
+          }
+          // Custom combobox — click to open, then pick option
+          el.click(); el.focus()
+          await wait(350)
+          const opts = [...document.querySelectorAll('[role="option"],[data-value]')]
+          if (opts.length === 0) { document.body.click(); continue }
+          const match = opts.find(o =>
+            o.textContent.trim().toLowerCase() === val.toLowerCase() ||
+            o.textContent.trim().toLowerCase().startsWith(val.slice(0,3).toLowerCase()) ||
+            (o.dataset.value || '').toLowerCase() === val.toLowerCase()
+          )
+          if (match) { match.click(); await wait(200); return true }
+          document.body.click()
+        } catch {}
+      }
+      return false
+    }
+
+    function fillText() {
+      fill(['[name="email"]','[autocomplete="email"]','[type="email"]','#checkout_email'], d.email)
+      fill(['[name="firstName"]','[autocomplete="given-name"]','#checkout_shipping_address_first_name','[placeholder*="First" i]'], d.firstName)
+      fill(['[name="lastName"]','[autocomplete="family-name"]','#checkout_shipping_address_last_name','[placeholder*="Last" i]'], d.lastName)
+      fill(['[name="address1"]','[autocomplete="address-line1"]','#checkout_shipping_address_address1','[placeholder*="Address" i]'], d.address1)
+      fill(['[name="address2"]','[autocomplete="address-line2"]','#checkout_shipping_address_address2','[placeholder*="Apartment" i]'], d.address2)
+      fill(['[name="city"]','[autocomplete="address-level2"]','#checkout_shipping_address_city','[placeholder="City"]'], d.city)
+      fill(['[name="postalCode"]','[name*="zip"]','[autocomplete="postal-code"]','#checkout_shipping_address_zip','[placeholder*="ZIP" i]','[placeholder*="Postal" i]'], d.zip)
+      fill(['[name="phone"]','[autocomplete="tel"]','#checkout_shipping_address_phone','[placeholder="Phone"]'], d.phone)
+      // Card fields (only works on sites without payment iframes)
+      fill(['[autocomplete="cc-name"]','[name="cardName"]','[name="name_on_card"]','[placeholder*="Name on card" i]'], d.ccName)
+      fill(['[autocomplete="cc-number"]','[name="cardNumber"]','[name="card_number"]','[name="number"]','[placeholder*="Card number" i]'], d.ccNumber)
+      fill(['[autocomplete="cc-exp"]','[name="cardExpiry"]','[name="expiry"]','[name="exp"]','[placeholder*="MM" i]'], d.ccExpiry)
+      fill(['[autocomplete="cc-csc"]','[name="cvv"]','[name="cvc"]','[name="securityCode"]','[name="security_code"]','[placeholder*="CVV" i]','[placeholder*="CVC" i]'], d.ccCvv)
+    }
+
+    // Fill text fields immediately, then handle dropdowns sequentially
+    fillText()
+
+    // Country first (triggers state list to render)
+    await fillCombobox(
+      ['[name="countryCode"]','[name*="country"]','[autocomplete="country"]','#checkout_shipping_address_country',
+       '[aria-label*="Country" i]','[id*="country" i]'],
+      d.country
+    )
+    await wait(400)
+
+    // State after country is set
+    await fillCombobox(
+      ['[name="zone"]','[name*="province"]','[autocomplete="address-level1"]','#checkout_shipping_address_province',
+       '[aria-label*="State" i]','[aria-label*="Province" i]','[id*="zone" i]'],
+      d.state
+    )
+
+    // Watch for form re-renders and re-fill text fields
+    const obs = new MutationObserver(() => fillText())
+    obs.observe(document.body, { childList: true, subtree: true })
+    setTimeout(() => obs.disconnect(), 15000)
+  })()`
+
+  await new Promise(r => setTimeout(r, 600))
+  try { await wv.executeJavaScript(script) } catch {}
+}
+
+const CHECKOUT_DARK_CSS = `
+  html, body { background: #111 !important; color: #e0e0e0 !important; }
+  *, *::before, *::after { background-color: inherit; border-color: #2a2a2a !important; }
+  [class],[id] { background-color: #111 !important; color: #e0e0e0 !important; }
+  input, select, textarea { background: #1e1e1e !important; color: #e0e0e0 !important; border-color: #333 !important; }
+  button:not([class*="pay"]):not([class*="btn-pay"]) { background: #1e1e1e !important; color: #e0e0e0 !important; }
+  a { color: #a78bfa !important; }
+  img, svg, iframe { background: #1a1a1a !important; }
+  [style*="background:#fff"],[style*="background: #fff"],[style*="background:white"],[style*="background: white"] { background: #111 !important; }
+`
+
+function initCheckoutWebview() {
+  const wv = $('checkout-webview')
+
+  wv.addEventListener('dom-ready', () => {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark'
+    if (dark) wv.insertCSS(CHECKOUT_DARK_CSS).catch(() => {})
+    runAutofill(wv)
+  })
+
+  $('btn-checkout-close').addEventListener('click', () => {
+    $('modal-checkout').style.display = 'none'
+    wv.src = 'about:blank'
+  })
+  $('btn-checkout-external').addEventListener('click', () => {
+    if (_checkoutUrl) window.api.openExternal(_checkoutUrl)
+  })
+  $('modal-checkout').addEventListener('click', e => {
+    if (e.target === $('modal-checkout')) {
+      $('modal-checkout').style.display = 'none'
+      wv.src = 'about:blank'
+    }
+  })
+}
+
 // Wire up eBay dark mode injection once on startup
 function initEbayDarkMode() {
   const wv = $('market-webview')
@@ -1891,6 +2693,119 @@ function runMarketSearch() {
   $('market-idle').style.display    = 'none'
   $('market-webview').style.display = 'flex'
   $('market-webview').src           = url
+}
+
+// ── Proxy Manager ─────────────────────────────────────────────────────────────
+let proxies = []
+
+async function loadProxies() {
+  proxies = await window.api.proxies.getAll()
+  renderProxies()
+}
+
+function renderProxies() {
+  const tbody = $('proxy-table-body')
+  const empty = $('proxy-empty')
+  const working  = proxies.filter(p => p.status === 'working').length
+  const dead     = proxies.filter(p => p.status === 'dead').length
+  const untested = proxies.filter(p => p.status === 'untested').length
+  $('proxy-count-working').textContent  = working
+  $('proxy-count-dead').textContent     = dead
+  $('proxy-count-untested').textContent = untested
+  $('proxy-total-badge').textContent    = proxies.length ? `${proxies.length}` : ''
+  if (!proxies.length) {
+    tbody.innerHTML = ''
+    empty.style.display = ''
+    return
+  }
+  empty.style.display = 'none'
+  tbody.innerHTML = proxies.map(p => `
+    <tr id="proxy-row-${p.id}">
+      <td><span class="proxy-host">${esc(p.host)}:${esc(p.port)}</span></td>
+      <td>${p.username ? `<span class="proxy-auth-yes">Auth</span>` : `<span class="proxy-auth-no">None</span>`}</td>
+      <td><span class="proxy-status-badge proxy-status-${p.status}">${p.status}</span></td>
+      <td>${p.latency != null ? `${p.latency}ms` : '<span style="color:var(--text-dim)">—</span>'}</td>
+      <td style="color:var(--text-dim);font-size:12px">${p.lastTested ? new Date(p.lastTested).toLocaleTimeString() : '—'}</td>
+      <td>
+        <div class="row-actions">
+          <button class="btn-row" title="Test" onclick="testProxy('${p.id}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+          <button class="btn-row btn-row-del" title="Delete" onclick="deleteProxy('${p.id}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('')
+}
+
+function updateProxyRow(id, result) {
+  const row = document.getElementById(`proxy-row-${id}`)
+  if (!row) return
+  const p = proxies.find(x => x.id === id)
+  if (!p) return
+  Object.assign(p, result, { lastTested: new Date().toISOString() })
+  const cells = row.querySelectorAll('td')
+  cells[2].innerHTML = `<span class="proxy-status-badge proxy-status-${p.status}">${p.status}</span>`
+  cells[3].textContent = p.latency != null ? `${p.latency}ms` : '—'
+  cells[4].textContent = new Date(p.lastTested).toLocaleTimeString()
+  // Update stat chips
+  $('proxy-count-working').textContent  = proxies.filter(x => x.status === 'working').length
+  $('proxy-count-dead').textContent     = proxies.filter(x => x.status === 'dead').length
+  $('proxy-count-untested').textContent = proxies.filter(x => x.status === 'untested').length
+}
+
+async function testProxy(id) {
+  const row = document.getElementById(`proxy-row-${id}`)
+  if (row) row.querySelector('.proxy-status-badge').className = 'proxy-status-badge proxy-status-testing'
+  row.querySelector('.proxy-status-badge').textContent = 'testing…'
+  await window.api.proxies.test(id)
+}
+
+async function deleteProxy(id) {
+  await window.api.proxies.delete(id)
+  proxies = proxies.filter(p => p.id !== id)
+  renderProxies()
+}
+
+function bindProxyEvents() {
+  $('btn-proxies-import-open').addEventListener('click', () => {
+    $('proxy-import-textarea').value = ''
+    $('proxy-import-status').textContent = ''
+    $('modal-proxy-import').style.display = 'flex'
+  })
+  const closeImport = () => { $('modal-proxy-import').style.display = 'none' }
+  $('modal-proxy-import-close').addEventListener('click', closeImport)
+  $('modal-proxy-import-cancel').addEventListener('click', closeImport)
+
+  $('btn-proxy-import-submit').addEventListener('click', async () => {
+    const lines = $('proxy-import-textarea').value.split('\n').map(l => l.trim()).filter(Boolean)
+    if (!lines.length) return
+    $('btn-proxy-import-submit').textContent = 'Importing…'
+    const result = await window.api.proxies.add(lines)
+    $('btn-proxy-import-submit').textContent = 'Import'
+    $('proxy-import-status').textContent = `Added ${result.added} proxies (${result.total} total, dupes skipped)`
+    await loadProxies()
+    if (result.added > 0) setTimeout(closeImport, 1200)
+  })
+
+  $('btn-proxies-test-all').addEventListener('click', async () => {
+    $('btn-proxies-test-all').textContent = 'Testing…'
+    $('btn-proxies-test-all').disabled = true
+    await window.api.proxies.testAll()
+    $('btn-proxies-test-all').textContent = 'Test All'
+    $('btn-proxies-test-all').disabled = false
+  })
+
+  $('btn-proxies-clear-dead').addEventListener('click', async () => {
+    const dead = proxies.filter(p => p.status === 'dead').length
+    if (!dead) return
+    proxies = await window.api.proxies.clear('dead')
+    renderProxies()
+  })
+
+  window.api.onProxyTestResult(result => updateProxyRow(result.id, result))
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────

@@ -41,16 +41,19 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Market Lookup
       </button>
-      <button class="tab-btn tab-monitors" data-view="monitors" id="tab-monitors" style="display:none">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        Monitors
-      </button>
-      <button class="tab-btn tab-discord" data-view="discord" id="tab-discord" style="display:none">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        Discord
-      </button>
     </div>
     <div class="nav-right">
+      <!-- Admin tool icon buttons -->
+      <button class="nav-tool-btn tab-btn tab-monitors" data-view="monitors" id="tab-monitors" style="display:none" title="Monitors">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      <button class="nav-tool-btn tab-btn tab-discord" data-view="discord" id="tab-discord" style="display:none" title="Discord">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <button class="nav-tool-btn tab-btn tab-proxies" data-view="proxies" id="tab-proxies" style="display:none" title="Proxies">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+      </button>
+      <div class="nav-divider" id="nav-admin-divider" style="display:none"></div>
       <button class="btn-settings" id="btn-open-settings" title="Settings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
@@ -293,6 +296,7 @@
       <div class="page-header">
         <h1 class="page-title">Monitors <span class="page-count" id="monitors-count"></span></h1>
         <div class="header-right">
+          <button class="btn-ghost" id="btn-test-nike-alert" style="font-size:11px;padding:4px 12px">Test Nike Alert</button>
           <button class="btn-add" id="btn-add-monitor">+ Monitor</button>
         </div>
       </div>
@@ -306,6 +310,13 @@
           <span class="section-subheader-title">Live Product Feed</span>
           <span class="page-count" id="feed-updated"></span>
         </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+          <div class="search-wrap" style="flex:1">
+            <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="feed-search" class="search-input" placeholder="Search products…" style="font-size:12px;width:100%" />
+          </div>
+          <button id="btn-feed-instock" class="btn-ghost" style="font-size:11px;padding:4px 12px;white-space:nowrap">In Stock Only</button>
+        </div>
         <div id="shopify-feed-tabs" class="feed-tabs"></div>
         <div id="shopify-feed-grid" class="shopify-feed-grid"></div>
       </div>
@@ -315,26 +326,150 @@
     <div id="view-discord" class="view">
       <div class="page-header">
         <h1 class="page-title">Discord <span id="discord-bot-status" class="page-count"></span></h1>
-      </div>
-
-      <div class="table-card" style="padding:20px 24px">
-        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px">Keyword Alerts</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Alerts fire when any keyword appears in a monitored Discord channel or embed. ATC links open automatically.</div>
-        <div style="display:flex;gap:8px;align-items:flex-start">
-          <textarea id="discord-keywords-input" class="form-input" rows="3"
-            placeholder="restock, in stock, W2C, ATC, cop..."
-            style="flex:1;resize:none;font-size:13px;padding:8px 10px"></textarea>
-          <button class="btn-add" id="btn-discord-keywords-save" style="white-space:nowrap;align-self:center">Save</button>
+        <div class="header-right">
+          <button class="btn-ghost" id="btn-selfbot-toggle" style="font-size:12px;padding:6px 14px;min-width:80px"></button>
+          <button class="btn-settings" id="btn-discord-settings" title="Discord Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
         </div>
       </div>
 
-      <div class="table-card" style="padding:20px 24px;margin-top:16px">
+      <!-- Cook Group Feed -->
+      <div class="table-card" style="padding:20px 24px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text)">Cook Group Feed</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">All messages from your feed channels appear here live</div>
+          </div>
+          <button class="btn-ghost" id="btn-feed-clear" style="font-size:11px;padding:4px 10px">Clear</button>
+        </div>
+        <div id="discord-feed-log" style="display:flex;flex-direction:column;gap:8px;margin-top:14px;max-height:480px;overflow-y:auto">
+          <div id="discord-feed-empty" style="font-size:13px;color:var(--text-dim);text-align:center;padding:20px 0">No feed channels added yet — add a channel ID in Discord Settings</div>
+        </div>
+      </div>
+
+      <!-- Keyword Alert History -->
+      <div class="table-card" style="padding:20px 24px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="font-size:13px;font-weight:700;color:var(--text)">Alert History</div>
+          <div style="font-size:13px;font-weight:700;color:var(--text)">Keyword Alert History</div>
           <button class="btn-ghost" id="btn-discord-clear" style="font-size:11px;padding:4px 10px">Clear</button>
         </div>
         <div id="discord-alert-log" style="display:flex;flex-direction:column;gap:8px">
           <div id="discord-log-empty" style="font-size:13px;color:var(--text-dim);text-align:center;padding:20px 0">No alerts yet</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Discord Settings Modal ─────────────────────────────────────── -->
+    <div id="modal-discord-settings" class="modal-overlay" style="display:none">
+      <div class="modal modal-settings-wide">
+        <div class="modal-header">
+          <h2>Discord Settings</h2>
+          <button class="modal-close" id="modal-discord-settings-close">✕</button>
+        </div>
+        <div class="modal-body" style="max-height:75vh;overflow-y:auto;display:flex;flex-direction:column;gap:24px">
+
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">Keyword Alerts</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Alerts fire when any keyword appears in a monitored channel or embed. ATC links open automatically.</div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+              <input id="discord-keywords-input" class="form-input" style="flex:1;font-size:13px" placeholder="Add keyword (e.g. restock, ATC, cop…)" />
+              <button class="btn-add" id="btn-discord-keywords-save" style="white-space:nowrap">Add</button>
+            </div>
+            <div id="discord-keyword-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:20px">
+            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">Monitored Channels</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Alerts only fire from messages in these channels. Right-click a channel in Discord → Copy Channel ID.</div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+              <input id="discord-channel-input" class="form-input" style="flex:1;font-size:13px" placeholder="Paste Channel ID (e.g. 1481349677122322503)" />
+              <button class="btn-add" id="btn-discord-channel-add" style="white-space:nowrap">Add</button>
+            </div>
+            <div id="discord-channel-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:20px">
+            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">Feed Channels</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Every message posted in these channels appears in your Cook Group Feed — no keywords needed. Right-click a channel in Discord → Copy Channel ID.</div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+              <input id="discord-feed-channel-input" class="form-input" style="flex:1;font-size:13px" placeholder="Paste Channel ID (e.g. 1244407430641614868)" />
+              <button class="btn-add" id="btn-discord-feed-channel-add" style="white-space:nowrap">Add</button>
+            </div>
+            <div id="discord-feed-channel-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:20px">
+            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">User Token</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Your Discord user token. Stored locally only. Changing this will restart the selfbot.</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <div style="position:relative;flex:1">
+                <input id="discord-token-input" class="form-input" type="password" autocomplete="off" placeholder="Paste token…" style="width:100%;padding-right:40px" />
+                <button class="af-reveal" data-target="discord-token-input" title="Show/hide" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-dim)">👁</button>
+              </div>
+              <button class="btn-add" id="btn-discord-token-save" style="white-space:nowrap">Save</button>
+            </div>
+            <div id="discord-token-status" style="font-size:11px;margin-top:6px;color:var(--text-dim)"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Proxies View ──────────────────────────────────────────────────── -->
+    <div id="view-proxies" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Proxies <span id="proxy-total-badge" class="page-count"></span></h1>
+        <div class="header-right">
+          <button class="btn-ghost" id="btn-proxies-test-all">Test All</button>
+          <button class="btn-ghost danger" id="btn-proxies-clear-dead">Clear Dead</button>
+          <button class="btn-add" id="btn-proxies-import-open">+ Import</button>
+        </div>
+      </div>
+
+      <div class="proxy-stats-row" id="proxy-stats-row">
+        <div class="proxy-stat-chip proxy-stat-working">Working <span id="proxy-count-working">0</span></div>
+        <div class="proxy-stat-chip proxy-stat-dead">Dead <span id="proxy-count-dead">0</span></div>
+        <div class="proxy-stat-chip proxy-stat-untested">Untested <span id="proxy-count-untested">0</span></div>
+      </div>
+
+      <div class="table-card">
+        <table class="data-table" id="proxy-table">
+          <thead>
+            <tr>
+              <th>Proxy</th>
+              <th>Auth</th>
+              <th>Status</th>
+              <th>Latency</th>
+              <th>Last Tested</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="proxy-table-body"></tbody>
+        </table>
+        <div id="proxy-empty" style="text-align:center;padding:32px;font-size:13px;color:var(--text-dim)">No proxies yet. Click <strong>+ Import</strong> to add.</div>
+      </div>
+    </div>
+
+    <!-- ── Proxy Import Modal ────────────────────────────────────────────── -->
+    <div id="modal-proxy-import" class="modal-overlay" style="display:none">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Import Proxies</h2>
+          <button class="modal-close" id="modal-proxy-import-close">✕</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          <div style="font-size:12px;color:var(--text-dim)">One proxy per line. Supported formats:<br>
+            <code style="font-size:11px">host:port</code> &nbsp;·&nbsp;
+            <code style="font-size:11px">host:port:user:pass</code> &nbsp;·&nbsp;
+            <code style="font-size:11px">user:pass@host:port</code>
+          </div>
+          <textarea id="proxy-import-textarea" class="form-input" rows="12" style="resize:vertical;font-family:monospace;font-size:12px" placeholder="192.168.1.1:8080&#10;192.168.1.1:8080:user:pass&#10;user:pass@192.168.1.1:8080"></textarea>
+          <div id="proxy-import-status" style="font-size:12px;color:var(--text-dim);min-height:16px"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-ghost" id="modal-proxy-import-cancel">Cancel</button>
+          <button class="btn-add" id="btn-proxy-import-submit">Import</button>
         </div>
       </div>
     </div>
@@ -363,6 +498,7 @@
 
       <webview id="market-webview" style="display:none;width:100%;flex:1;min-height:600px;border-radius:10px;overflow:hidden" src="about:blank"></webview>
     </div>
+
 
   </main>
 
@@ -559,6 +695,7 @@
         </div>
         <div id="settings-username" style="font-size:15px;font-weight:700;color:var(--text);margin-top:10px">Loading...</div>
         <button class="btn-dashboard" id="btn-dashboard">Dashboard</button>
+        <button class="btn-dashboard" id="btn-open-profile" style="margin-top:6px;background:var(--surface2);color:var(--text)">My Profile</button>
       </div>
 
       <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
@@ -573,6 +710,17 @@
         </div>
       </div>
       <div id="settings-api-status" style="margin-top:4px;font-size:12px;font-weight:600;display:none"></div>
+
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="settings-info-btn" id="btn-show-features">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Features
+        </button>
+        <button class="settings-info-btn" id="btn-show-whats-new">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          What's New
+        </button>
+      </div>
     </div>
     <div class="modal-footer" style="justify-content:space-between">
       <button class="btn-danger" id="btn-logout" style="font-size:13px;padding:8px 16px">Sign Out</button>
@@ -652,6 +800,8 @@
         <button class="mon-site-btn" data-site="amazon"  style="--site-color:#ff9900">📦 Amazon</button>
         <button class="mon-site-btn" data-site="bestbuy" style="--site-color:#0046be">🔵 Best Buy</button>
         <button class="mon-site-btn" data-site="lego"    style="--site-color:#e3000b">🧱 LEGO</button>
+        <button class="mon-site-btn" data-site="funko"   style="--site-color:#ff6b00">🎭 Funko</button>
+        <button class="mon-site-btn" data-site="nike"    style="--site-color:#111111">👟 Nike</button>
       </div>
 
       <!-- Shopify-only fields -->
@@ -661,8 +811,18 @@
           <button class="monitor-type-btn" id="mon-type-product" data-type="product">Specific Product</button>
         </div>
         <div class="form-row">
-          <input type="url" id="mon-url" class="form-input grow" placeholder="Shopify Site URL * (e.g. https://kith.com)" />
+          <input type="url" id="mon-url" class="form-input grow" placeholder="Shopify Site URL * (e.g. https://kith.com)" list="shopify-sites-list" />
         </div>
+        <datalist id="shopify-sites-list">
+          <option value="https://funko.com">Funko</option>
+          <option value="https://kith.com">Kith</option>
+          <option value="https://bape.com">Bape</option>
+          <option value="https://undefeated.com">Undefeated</option>
+          <option value="https://shopnicekicks.com">Area 51</option>
+          <option value="https://cpfm.xyz">CPFM</option>
+          <option value="https://travisscott.com">Travis Scott</option>
+          <option value="https://store.doverstreetmarket.com">DSM</option>
+        </datalist>
         <div class="form-row" id="mon-product-row" style="display:none">
           <input type="url" id="mon-product-url" class="form-input grow" placeholder="Product URL * (e.g. https://kith.com/products/nike-dunk-low)" />
         </div>
@@ -721,7 +881,259 @@
   <img id="lightbox-img" src="" alt="" />
 </div>
 
+<!-- ── My Profile Modal ─────────────────────────────────────────────── -->
+<div id="modal-profile" class="modal-overlay" style="display:none">
+  <div class="modal modal-settings-wide">
+    <div class="modal-header">
+      <h2>My Profile</h2>
+      <button class="modal-close" id="modal-profile-close">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:75vh;overflow-y:auto">
+
+      <!-- Profile switcher -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+        <span style="font-size:12px;font-weight:700;color:var(--text-muted);white-space:nowrap">Profile:</span>
+        <select id="profile-switcher" class="form-input" style="flex:1;font-size:13px"></select>
+        <button class="btn-add" id="btn-profile-new" style="white-space:nowrap;font-size:12px;padding:6px 12px">+ New</button>
+        <button class="btn-ghost danger" id="btn-profile-delete" style="white-space:nowrap;font-size:12px;padding:6px 12px">Delete</button>
+      </div>
+      <div style="margin-bottom:14px">
+        <label class="af-label">Profile Name</label>
+        <input id="af-profile-name" class="form-input" placeholder="e.g. Home, Work, Bot…" autocomplete="off" />
+      </div>
+
+      <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px">Shipping Info</div>
+      <div class="autofill-grid">
+        <div class="af-field">
+          <label class="af-label">First Name</label>
+          <input id="af-first" class="form-input" autocomplete="off" />
+        </div>
+        <div class="af-field">
+          <label class="af-label">Last Name</label>
+          <input id="af-last" class="form-input" autocomplete="off" />
+        </div>
+        <div class="af-field" style="grid-column:span 2">
+          <label class="af-label">Email</label>
+          <input id="af-email" class="form-input" autocomplete="off" />
+        </div>
+        <div class="af-field">
+          <label class="af-label">Phone</label>
+          <input id="af-phone" class="form-input" autocomplete="off" />
+        </div>
+        <div class="af-field" style="grid-column:span 2">
+          <label class="af-label">Address Line 1</label>
+          <input id="af-addr1" class="form-input" autocomplete="off" />
+        </div>
+        <div class="af-field" style="grid-column:span 2">
+          <label class="af-label">Address Line 2 <span style="font-weight:400;opacity:.6">(Apt, Suite…)</span></label>
+          <input id="af-addr2" class="form-input" autocomplete="off" />
+        </div>
+        <div class="af-field">
+          <label class="af-label">City</label>
+          <input id="af-city" class="form-input" autocomplete="off" />
+        </div>
+        <div class="af-field">
+          <label class="af-label">State</label>
+          <input id="af-state" class="form-input" autocomplete="off" />
+        </div>
+        <div class="af-field">
+          <label class="af-label">ZIP / Postal</label>
+          <input id="af-zip" class="form-input" autocomplete="off" />
+        </div>
+        <div class="af-field">
+          <label class="af-label">Country</label>
+          <input id="af-country" class="form-input" autocomplete="off" placeholder="e.g. United States" />
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--border);margin:20px 0"></div>
+
+      <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px">Payment Card</div>
+      <div class="autofill-grid">
+        <div class="af-field" style="grid-column:span 2">
+          <label class="af-label">Name on Card</label>
+          <input id="af-cc-name" class="form-input" autocomplete="off" />
+        </div>
+        <div class="af-field" style="grid-column:span 2">
+          <label class="af-label">Card Number</label>
+          <div style="position:relative">
+            <input id="af-cc-number" class="form-input" type="password" autocomplete="off" maxlength="19" placeholder="•••• •••• •••• ••••" style="width:100%;padding-right:40px" />
+            <button class="af-reveal" data-target="af-cc-number" title="Show/hide">👁</button>
+          </div>
+        </div>
+        <div class="af-field">
+          <label class="af-label">Expiry (MM/YY)</label>
+          <input id="af-cc-expiry" class="form-input" autocomplete="off" maxlength="5" placeholder="MM/YY" />
+        </div>
+        <div class="af-field">
+          <label class="af-label">CVV</label>
+          <div style="position:relative">
+            <input id="af-cc-cvv" class="form-input" type="password" autocomplete="off" maxlength="4" placeholder="•••" style="width:100%;padding-right:40px" />
+            <button class="af-reveal" data-target="af-cc-cvv" title="Show/hide">👁</button>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:12px">Stored locally on your device only — never sent to any server. Card fields inside Shopify's payment iframe cannot be auto-filled.</div>
+
+    </div>
+    <div class="modal-footer" style="justify-content:flex-end">
+      <button class="btn-ghost" id="btn-profile-cancel">Cancel</button>
+      <button class="btn-add" id="btn-profile-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Checkout Webview Modal ────────────────────────────────────────── -->
+<div id="modal-checkout" class="modal-overlay" style="display:none">
+  <div class="checkout-modal">
+    <div class="checkout-toolbar">
+      <div class="checkout-toolbar-left">
+        <img id="checkout-favicon" src="" alt="" style="width:16px;height:16px;border-radius:3px;display:none" />
+        <span id="checkout-site-label" style="font-size:12px;font-weight:600;color:var(--text)"></span>
+      </div>
+      <div class="checkout-toolbar-right">
+        <button class="btn-ghost" id="btn-checkout-external" style="font-size:11px;padding:4px 10px">Open in Browser</button>
+        <button class="modal-close" id="btn-checkout-close">✕</button>
+      </div>
+    </div>
+    <webview id="checkout-webview"
+      partition="persist:checkout"
+      style="flex:1;width:100%"
+      src="about:blank">
+    </webview>
+  </div>
+</div>
+
 <div id="toast-container" class="toast-container"></div>
+
+<!-- ── Features Modal ───────────────────────────────────────────────── -->
+<div id="modal-features" class="modal-overlay" style="display:none">
+  <div class="modal modal-info">
+    <div class="modal-header">
+      <h2>Features</h2>
+      <button class="modal-close" id="modal-features-close">✕</button>
+    </div>
+    <div class="modal-body info-modal-body">
+      <p class="info-tagline">Everything you need to run a resell operation — tracking, monitoring, and market research in one place.</p>
+
+      <div class="info-section">
+        <div class="info-section-title">Home Dashboard</div>
+        <ul class="info-list">
+          <li>Live calendar with upcoming release dates you've added</li>
+          <li>Profit overview chart at a glance</li>
+          <li>Pinned notes for reminders and drop tips</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Sales</div>
+        <ul class="info-list">
+          <li>Log sales with platform, price, fees, and photos</li>
+          <li>Auto-calculated profit per sale</li>
+          <li>Running profit chart on home screen</li>
+          <li>Filter and sort your full sales history</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Inventory</div>
+        <ul class="info-list">
+          <li>Track everything you own but haven't sold yet</li>
+          <li>Purchase price, condition, and photos per item</li>
+          <li>See total capital tied up in stock at a glance</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Packages</div>
+        <ul class="info-list">
+          <li>Track shipments by tracking number and carrier</li>
+          <li>Live tracking events pulled without leaving the app</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Market Lookup</div>
+        <ul class="info-list">
+          <li>Search any item and see live eBay active or sold listings</li>
+          <li>Instantly research resell value before you buy or list</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Monitors</div>
+        <ul class="info-list">
+          <li><strong>Nike SNKRS</strong> — watches the launch feed, shows drop method (Draw / FCFS), live countdown per card, and available sizes. Only shows drops within 2 hours of launch so feed stays relevant</li>
+          <li><strong>Funko</strong> — scrapes Funko's site for new products and restocks. Alerts on restock or price drop</li>
+          <li><strong>Shopify</strong> — monitors any Shopify store (Supreme, Kith, etc.) for new products or restocks</li>
+          <li><strong>Best Buy / Amazon / LEGO</strong> — stock monitors on specific product URLs</li>
+          <li>Aggressive in-app Nike alert — sound × 3, window flash, persistent toast with size buttons and ATC links</li>
+          <li>Boost mode — auto-tightens Nike polling to every 10s within 5 min of a drop</li>
+          <li>Discord webhook pings with rich embeds for every monitor type</li>
+          <li>Nike Discord embed includes clickable size-to-cart links and StockX/GOAT search buttons</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Discord Integration</div>
+        <ul class="info-list">
+          <li><strong>Selfbot keyword alerts</strong> — monitors channels you're in and fires an in-app alert when any keyword matches (e.g. restock, ATC, cop)</li>
+          <li><strong>Cook Group Feed</strong> — subscribe to any channel by ID and every message posts to a live feed inside the app, no keywords needed. ATC links are highlighted automatically</li>
+          <li>Outgoing webhooks push monitor alerts to your own Discord server</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Proxies</div>
+        <ul class="info-list">
+          <li>Add, test, and manage a proxy list</li>
+          <li>Test all proxies at once or individually</li>
+          <li>Dead proxy cleanup with one click</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── What's New Modal ──────────────────────────────────────────────── -->
+<div id="modal-whats-new" class="modal-overlay" style="display:none">
+  <div class="modal modal-info">
+    <div class="modal-header">
+      <h2>What's New</h2>
+      <button class="modal-close" id="modal-whats-new-close">✕</button>
+    </div>
+    <div class="modal-body info-modal-body">
+
+      <div class="info-section">
+        <div class="info-section-title info-version">v1.9.0 — Latest</div>
+        <ul class="info-list">
+          <li>Nike SNKRS monitor with live countdown, draw/FCFS detection, size buttons, and StockX/GOAT search links</li>
+          <li>Aggressive in-app Nike alert — sound × 3, window flash, persistent toast with size-to-cart buttons</li>
+          <li>Nike feed now filters to only show drops within 2 hours of launch — no more stale sold-out products</li>
+          <li>Boost mode — polling tightens to every 10s within 5 min of a Nike drop going live</li>
+          <li>Funko monitor — new product and restock alerts with price drop detection</li>
+          <li>Discord selfbot — keyword monitoring in any channel you're in</li>
+          <li>Cook Group Feed — subscribe to a channel by ID and see every message live in-app, ATC links auto-highlighted</li>
+          <li>Proxy manager — add, test, and clean proxies</li>
+          <li>Features and What's New modals added to Settings</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title info-upcoming">Coming Soon</div>
+        <ul class="info-list info-list-upcoming">
+          <li>More monitor sources — more sneaker sites, toys, games</li>
+          <li>Profit export to CSV / spreadsheet</li>
+          <li>Mobile push notifications</li>
+          <li>Auto-add to inventory when you cop from a monitor alert</li>
+          <li>Release calendar with community-sourced drop dates</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>

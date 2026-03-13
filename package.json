@@ -16,6 +16,8 @@
       "preload.js",
       "scraper-preload.js",
       "discord-config.js",
+      "selfbot.js",
+      "node_modules/**/*",
       "renderer/**/*"
     ],
     "win": {
@@ -46,6 +48,7 @@
     }
   },
   "dependencies": {
+    "discord.js-selfbot-v13": "^3.7.1",
     "electron-updater": "^6.1.7"
   },
   "devDependencies": {

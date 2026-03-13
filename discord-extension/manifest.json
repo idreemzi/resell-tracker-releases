@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Resell Tracker - Discord Monitor",
+  "version": "1.0",
+  "description": "Monitors Discord for keywords and alerts Resell Tracker",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://discord.com/*",
+    "http://localhost:7429/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://discord.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Resell Tracker Discord Monitor"
+  }
+}

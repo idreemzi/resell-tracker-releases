@@ -1,14 +1,45 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, net, session, protocol } = require('electron')
 const path   = require('path')
 const fs     = require('fs')
 const http   = require('http')
+const https  = require('https')
+const dns    = require('dns')
 const crypto = require('crypto')
+
+// DNS-over-HTTPS via Cloudflare 1.1.1.1 — bypasses OS DNS and any UDP/53 blocks
+const _nikeIpCache = {}
+function resolveViaDoh(hostname) {
+  if (_nikeIpCache[hostname]) return Promise.resolve(_nikeIpCache[hostname])
+  return new Promise((resolve) => {
+    const req = https.get({
+      host:    '1.1.1.1',
+      path:    `/dns-query?name=${encodeURIComponent(hostname)}&type=A`,
+      headers: { 'Accept': 'application/dns-json' }
+    }, (res) => {
+      let body = ''
+      res.on('data', d => body += d)
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(body)
+          const record = (json.Answer || []).find(r => r.type === 1)
+          const ip = record ? record.data : null
+          if (ip) _nikeIpCache[hostname] = ip
+          console.log(`[nike-doh] ${hostname} -> ${ip || 'FAILED'}`)
+          resolve(ip)
+        } catch { resolve(null) }
+      })
+    })
+    req.on('error', (e) => { console.log('[nike-doh] DoH error:', e.message); resolve(null) })
+    req.setTimeout(8000, () => { req.destroy(); resolve(null) })
+  })
+}
 const DISCORD = require('./discord-config')
 const { autoUpdater } = require('electron-updater')
 
 let mainWindow
 let dataPath
 let photosDir
+let proxiesPath
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -40,10 +71,60 @@ async function createWindow() {
   }
 }
 
+// nike-img:// scheme — proxies Nike CDN images through main process with proper headers
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'nike-img', privileges: { secure: true, bypassCSP: true, corsEnabled: true, supportFetchAPI: true } }
+])
+
 app.whenReady().then(() => {
+  protocol.handle('nike-img', async (request) => {
+    const url = 'https://' + request.url.slice('nike-img://'.length)
+    const parsed = new URL(url)
+    const ip = await resolveViaDoh(parsed.hostname)
+    if (!ip) return new Response('', { status: 404 })
+    return new Promise((resolve) => {
+      https.get({
+        host:       ip,
+        path:       parsed.pathname + parsed.search,
+        servername: parsed.hostname,
+        headers: {
+          'Host':       parsed.hostname,
+          'Referer':    'https://www.nike.com/',
+          'Origin':     'https://www.nike.com',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        }
+      }, (res) => {
+        const chunks = []
+        res.on('data', c => chunks.push(c))
+        res.on('end', () => {
+          resolve(new Response(Buffer.concat(chunks), {
+            status: res.statusCode,
+            headers: { 'Content-Type': res.headers['content-type'] || 'image/jpeg', 'Cache-Control': 'max-age=86400' }
+          }))
+        })
+        res.on('error', () => resolve(new Response('', { status: 502 })))
+      }).on('error', (e) => {
+        console.log('[nike-img] fetch error:', e.message)
+        resolve(new Response('', { status: 404 }))
+      })
+    })
+  })
+
+  // Inject Referer for Nike CDN so product images load in the feed
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['https://secure-images.nike.com/*', 'https://images.nike.com/*', 'https://static.nike.com/*', 'https://api.nike.com/*'] },
+    (details, callback) => {
+      details.requestHeaders['Referer']    = 'https://www.nike.com/'
+      details.requestHeaders['Origin']     = 'https://www.nike.com'
+      details.requestHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      callback({ requestHeaders: details.requestHeaders })
+    }
+  )
+
   const userDataPath = app.getPath('userData')
-  dataPath = path.join(userDataPath, 'data.json')
-  photosDir = path.join(userDataPath, 'photos')
+  dataPath    = path.join(userDataPath, 'data.json')
+  proxiesPath = path.join(userDataPath, 'proxies.json')
+  photosDir   = path.join(userDataPath, 'photos')
   if (!fs.existsSync(photosDir)) fs.mkdirSync(photosDir, { recursive: true })
   createWindow()
   app.on('activate', () => {
@@ -313,6 +394,115 @@ function saveSettings(settings) {
 
 ipcMain.handle('settings:get', () => getSettings())
 ipcMain.handle('settings:set', (_, settings) => { saveSettings(settings); return true })
+
+// ── Proxy Manager ─────────────────────────────────────────────────────────────
+function getProxies() {
+  try { return JSON.parse(fs.readFileSync(proxiesPath, 'utf8')) } catch { return [] }
+}
+function saveProxies(list) {
+  fs.writeFileSync(proxiesPath, JSON.stringify(list, null, 2), 'utf8')
+}
+
+function parseProxy(raw) {
+  raw = (raw || '').trim()
+  if (!raw) return null
+  // user:pass@host:port
+  let m = raw.match(/^([^:@]+):([^@]+)@([^:]+):(\d+)$/)
+  if (m) return { host: m[3], port: m[4], username: m[1], password: m[2] }
+  // host:port:user:pass
+  m = raw.match(/^([^:]+):(\d+):([^:]+):(.+)$/)
+  if (m) return { host: m[1], port: m[2], username: m[3], password: m[4] }
+  // host:port
+  m = raw.match(/^([^:]+):(\d+)$/)
+  if (m) return { host: m[1], port: m[2], username: null, password: null }
+  return null
+}
+
+function testOneProxy(proxy) {
+  return new Promise(resolve => {
+    const start = Date.now()
+    const timer = setTimeout(() => {
+      try { req.destroy() } catch {}
+      resolve({ status: 'dead', latency: null })
+    }, 10000)
+
+    const headers = { 'User-Agent': 'Mozilla/5.0', 'Connection': 'close' }
+    if (proxy.username) {
+      headers['Proxy-Authorization'] = 'Basic ' + Buffer.from(`${proxy.username}:${proxy.password}`).toString('base64')
+    }
+
+    const req = http.request({
+      host: proxy.host,
+      port: parseInt(proxy.port, 10),
+      method: 'GET',
+      path: 'http://ipv4.icanhazip.com/',
+      headers
+    }, res => {
+      let body = ''
+      res.on('data', c => body += c.toString())
+      res.on('end', () => {
+        clearTimeout(timer)
+        resolve(res.statusCode === 200
+          ? { status: 'working', latency: Date.now() - start, ip: body.trim() }
+          : { status: 'dead', latency: null })
+      })
+    })
+    req.on('error', () => { clearTimeout(timer); resolve({ status: 'dead', latency: null }) })
+    req.end()
+  })
+}
+
+ipcMain.handle('proxies:getAll', () => getProxies())
+
+ipcMain.handle('proxies:add', (_, rawList) => {
+  const proxies = getProxies()
+  const existing = new Set(proxies.map(p => `${p.host}:${p.port}`))
+  let added = 0
+  for (const raw of rawList) {
+    const p = parseProxy(raw)
+    if (!p) continue
+    const key = `${p.host}:${p.port}`
+    if (existing.has(key)) continue
+    existing.add(key)
+    proxies.push({ id: crypto.randomUUID(), ...p, status: 'untested', latency: null, lastTested: null })
+    added++
+  }
+  saveProxies(proxies)
+  return { added, total: proxies.length }
+})
+
+ipcMain.handle('proxies:delete', (_, id) => {
+  saveProxies(getProxies().filter(p => p.id !== id))
+  return true
+})
+
+ipcMain.handle('proxies:test', async (_, id) => {
+  const proxies = getProxies()
+  const proxy = proxies.find(p => p.id === id)
+  if (!proxy) return null
+  const result = await testOneProxy(proxy)
+  Object.assign(proxy, result, { lastTested: new Date().toISOString() })
+  saveProxies(proxies)
+  notifyRenderer('proxy:testResult', { id, ...result })
+  return { id, ...result }
+})
+
+ipcMain.handle('proxies:testAll', async () => {
+  const proxies = getProxies()
+  await Promise.all(proxies.map(async proxy => {
+    const result = await testOneProxy(proxy)
+    Object.assign(proxy, result, { lastTested: new Date().toISOString() })
+    notifyRenderer('proxy:testResult', { id: proxy.id, ...result })
+  }))
+  saveProxies(proxies)
+  return getProxies()
+})
+
+ipcMain.handle('proxies:clear', (_, type) => {
+  const list = type === 'all' ? [] : getProxies().filter(p => p.status !== 'dead')
+  saveProxies(list)
+  return list
+})
 
 // ── BrowserWindow scraper ─────────────────────────────────────────────────────
 let scrapeQueue = Promise.resolve()
@@ -665,6 +855,7 @@ ipcMain.handle('shell:openExternal', (_, url) => {
 ipcMain.handle('app:version',      () => app.getVersion())
 ipcMain.handle('window:minimize',  () => mainWindow.minimize())
 ipcMain.handle('window:close',     () => mainWindow.close())
+ipcMain.handle('window:flash',     () => { mainWindow.flashFrame(true); mainWindow.once('focus', () => mainWindow.flashFrame(false)) })
 
 ipcMain.handle('tracking:fetchEvents', async (_, trackingNumber, carrier) => {
   // 17track API path (optional, if user has configured a key)
@@ -964,104 +1155,169 @@ const localMonitorTimers  = new Map()  // monitorId → intervalId
 const localMonitorSeen    = new Map()  // monitorId → { available, price } (BB/Amazon)
 const localMonitorWindows = new Map()  // monitorId → persistent BrowserWindow
 const shopifyMonitorSeen  = new Map()  // monitorId → Map<productId, variantData>
-const LOCAL_MONITOR_SITES = new Set(['bestbuy', 'amazon', 'shopify', 'lego'])
+const funkoMonitorSeen    = new Map()  // monitorId → Map<sku, { available, price }>
+const nikeMonitorSeen     = new Map()  // monitorId → Map<pid, { method, launchDate, status }>
+const nikeBoostTimers     = new Map()  // monitorId → { timer, stopAt } — fast pre-launch polling
+const LOCAL_MONITOR_SITES = new Set(['bestbuy', 'amazon', 'shopify', 'lego', 'funko', 'nike'])
 
 let mainWindowRef = null  // set after mainWindow is created
 
 // ── Discord keyword alert receiver (Chrome extension → Electron) ──────────────
-const DISCORD_ALERT_PORT = 7429
-const discordAlertServer = http.createServer((req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-  if (req.method === 'OPTIONS') { res.writeHead(204); return res.end() }
-  if (req.method === 'GET' && req.url === '/ping') {
-    res.writeHead(200); return res.end('ok')
-  }
-  if (req.method === 'POST' && req.url === '/discord-alert') {
-    let body = ''
-    req.on('data', d => body += d)
-    req.on('end', () => {
-      try {
-        const data = JSON.parse(body)
-        notifyRenderer('discord:keywordAlert', data)
-      } catch {}
-      res.writeHead(200); res.end('ok')
-    })
-    return
-  }
-  res.writeHead(404); res.end()
-})
-discordAlertServer.listen(DISCORD_ALERT_PORT, '127.0.0.1', () => {
-  console.log(`[discord-monitor] Listening on localhost:${DISCORD_ALERT_PORT}`)
-})
-discordAlertServer.on('error', err => {
-  console.error(`[discord-monitor] Server error: ${err.message}`)
-})
+// ── Node.js selfbot (discord.js-selfbot-v13) ──────────────────────────────────
+const selfbot = require('./selfbot')
 
-// ── Selfbot config helpers ────────────────────────────────────────────────────
-const SELFBOT_CONFIG = 'C:\\Users\\Alex\\Desktop\\aler\\config_self.json'
-
-function readSelfbotConfig() {
-  try { return JSON.parse(fs.readFileSync(SELFBOT_CONFIG, 'utf8')) } catch { return null }
+// Selfbot config is stored inside settings.json under the "discord" key
+function getSelfbotConfig() {
+  const s = getSettings()
+  return s.discord || {}
 }
 
-ipcMain.handle('selfbot:getKeywords', () => {
-  const cfg = readSelfbotConfig()
-  return (cfg?.keywords || []).join(', ')
-})
+function saveSelfbotConfig(discord) {
+  const s = getSettings()
+  saveSettings({ ...s, discord })
+}
 
-ipcMain.handle('selfbot:setKeywords', (_, keywordsStr) => {
-  try {
-    const keywords = keywordsStr.split(',').map(k => k.trim()).filter(Boolean)
-    // Read as raw text and replace only the keywords array to avoid JS
-    // number precision loss corrupting large Discord channel ID integers
-    let raw = fs.readFileSync(SELFBOT_CONFIG, 'utf8')
-    const kwJson = JSON.stringify(keywords)
-    if (/"keywords"\s*:/.test(raw)) {
-      raw = raw.replace(/"keywords"\s*:\s*\[[\s\S]*?\]/, `"keywords": ${kwJson}`)
-    } else {
-      // No keywords key yet — insert after opening brace
-      raw = raw.replace(/^\{/, `{\n  "keywords": ${kwJson},`)
-    }
-    fs.writeFileSync(SELFBOT_CONFIG, raw, 'utf8')
-    // Restart selfbot so new keywords take effect
-    if (selfbotProcess) { selfbotProcess.kill(); selfbotProcess = null }
-    setTimeout(startSelfbot, 1000)
-    return { ok: true }
-  } catch (e) { return { error: e.message } }
-})
-
-ipcMain.handle('selfbot:status', () => !!selfbotProcess)
-
-// ── Spawn Python selfbot alert script ─────────────────────────────────────────
-const SELFBOT_SCRIPT = 'C:\\Users\\Alex\\Desktop\\aler\\self_alert.py'
-const SELFBOT_PYTHON = 'C:\\Users\\Alex\\Desktop\\aler\\.venv\\Scripts\\python.exe'
-let selfbotProcess = null
+// Channel name cache (cleared when token changes)
+const _channelNameCache = new Map()
+const _guildNameCache   = new Map()
 
 function startSelfbot() {
-  if (selfbotProcess) return
-  const { spawn } = require('child_process')
-  selfbotProcess = spawn(SELFBOT_PYTHON, [SELFBOT_SCRIPT], {
-    cwd: 'C:\\Users\\Alex\\Desktop\\aler',
-    windowsHide: true
-  })
-  selfbotProcess.stdout.on('data', d => console.log(`[selfbot] ${d.toString().trim()}`))
-  selfbotProcess.stderr.on('data', d => console.log(`[selfbot] ${d.toString().trim()}`))
-  selfbotProcess.on('exit', (code) => {
-    console.log(`[selfbot] exited code=${code}`)
-    selfbotProcess = null
-  })
-  console.log('[selfbot] started')
+  if (selfbot.isRunning()) return
+  const cfg = getSelfbotConfig()
+  if (!cfg.token) return
+  selfbot.start(
+    { token: cfg.token, keywords: cfg.keywords || [], channelIds: cfg.channelIds || [], feedChannelIds: cfg.feedChannelIds || [], caseSensitive: cfg.caseSensitive || false },
+    data    => notifyRenderer('discord:keywordAlert', data),
+    running => notifyRenderer('selfbot:statusUpdate', { running }),
+    data    => notifyRenderer('discord:feedMessage',  data)
+  )
 }
 
+function restartSelfbot() {
+  selfbot.stop()
+  setTimeout(startSelfbot, 800)
+}
+
+ipcMain.handle('selfbot:getToken', () => getSelfbotConfig().token || '')
+
+ipcMain.handle('selfbot:setToken', (_, token) => {
+  const clean = token.trim()
+  if (!clean) return { error: 'Token cannot be empty' }
+  const cfg = getSelfbotConfig()
+  saveSelfbotConfig({ ...cfg, token: clean })
+  _channelNameCache.clear()
+  _guildNameCache.clear()
+  restartSelfbot()
+  return { ok: true }
+})
+
+ipcMain.handle('selfbot:getKeywords', () => (getSelfbotConfig().keywords || []).join(', '))
+
+ipcMain.handle('selfbot:setKeywords', (_, keywordsStr) => {
+  const keywords = keywordsStr.split(',').map(k => k.trim()).filter(Boolean)
+  const cfg = getSelfbotConfig()
+  saveSelfbotConfig({ ...cfg, keywords })
+  restartSelfbot()
+  return { ok: true }
+})
+
+ipcMain.handle('selfbot:getChannels', () => getSelfbotConfig().channelIds || [])
+
+ipcMain.handle('selfbot:addChannel', (_, id) => {
+  const clean = id.toString().trim().replace(/\D/g, '')
+  if (!clean) return { error: 'Invalid ID' }
+  const cfg = getSelfbotConfig()
+  const ids = cfg.channelIds || []
+  if (ids.includes(clean)) return { error: 'Already added' }
+  const updated = [...ids, clean]
+  saveSelfbotConfig({ ...cfg, channelIds: updated })
+  restartSelfbot()
+  return { ok: true, ids: updated }
+})
+
+ipcMain.handle('selfbot:removeChannel', (_, id) => {
+  const clean = id.toString().trim()
+  const cfg = getSelfbotConfig()
+  const updated = (cfg.channelIds || []).filter(i => i !== clean)
+  saveSelfbotConfig({ ...cfg, channelIds: updated })
+  restartSelfbot()
+  return { ok: true, ids: updated }
+})
+
+ipcMain.handle('selfbot:getChannelNames', async () => {
+  try {
+    const token = getSelfbotConfig().token
+    if (!token) return {}
+    const ids = getSelfbotConfig().channelIds || []
+    const result = {}
+
+    await Promise.all(ids.map(async id => {
+      if (_channelNameCache.has(id)) { result[id] = _channelNameCache.get(id); return }
+      try {
+        const res = await fetch(`https://discord.com/api/v10/channels/${id}`, {
+          headers: { Authorization: token, 'Content-Type': 'application/json' }
+        })
+        if (!res.ok) { result[id] = { channel: id, guild: null }; return }
+        const data = await res.json()
+        const channelName = data.name || data.recipients?.[0]?.username || id
+        let guildName = null
+        if (data.guild_id) {
+          if (_guildNameCache.has(data.guild_id)) {
+            guildName = _guildNameCache.get(data.guild_id)
+          } else {
+            try {
+              const gr = await fetch(`https://discord.com/api/v10/guilds/${data.guild_id}`, {
+                headers: { Authorization: token, 'Content-Type': 'application/json' }
+              })
+              if (gr.ok) {
+                const gd = await gr.json()
+                guildName = gd.name || null
+                _guildNameCache.set(data.guild_id, guildName)
+              }
+            } catch {}
+          }
+        }
+        const entry = { channel: channelName, guild: guildName }
+        _channelNameCache.set(id, entry)
+        result[id] = entry
+      } catch { result[id] = { channel: id, guild: null } }
+    }))
+    return result
+  } catch { return {} }
+})
+
+ipcMain.handle('selfbot:getFeedChannels', () => getSelfbotConfig().feedChannelIds || [])
+ipcMain.handle('selfbot:addFeedChannel', (_, id) => {
+  const clean = id.toString().trim()
+  const cfg = getSelfbotConfig()
+  const ids = [...new Set([...(cfg.feedChannelIds || []), clean])]
+  saveSelfbotConfig({ ...cfg, feedChannelIds: ids })
+  restartSelfbot()
+  return { ok: true, ids }
+})
+ipcMain.handle('selfbot:removeFeedChannel', (_, id) => {
+  const clean = id.toString().trim()
+  const cfg = getSelfbotConfig()
+  const ids = (cfg.feedChannelIds || []).filter(i => i !== clean)
+  saveSelfbotConfig({ ...cfg, feedChannelIds: ids })
+  restartSelfbot()
+  return { ok: true, ids }
+})
+
+ipcMain.handle('selfbot:status', () => selfbot.isRunning())
+ipcMain.handle('selfbot:start',  () => { startSelfbot(); return true })
+ipcMain.handle('selfbot:stop',   () => {
+  selfbot.stop()
+  notifyRenderer('selfbot:statusUpdate', { running: false })
+  return true
+})
+
 app.whenReady().then(() => {
-  // small delay so the HTTP server is up before the script connects
-  setTimeout(startSelfbot, 3000)
+  setTimeout(startSelfbot, 2000)
 })
 
 app.on('before-quit', () => {
-  if (selfbotProcess) { selfbotProcess.kill(); selfbotProcess = null }
+  selfbot.stop()
 })
 
 function notifyRenderer(channel, data) {
@@ -1092,6 +1348,10 @@ function stopLocalMonitor(monitorId) {
   if (t) { clearInterval(t); localMonitorTimers.delete(monitorId) }
   localMonitorSeen.delete(monitorId)
   shopifyMonitorSeen.delete(monitorId)
+  funkoMonitorSeen.delete(monitorId)
+  nikeMonitorSeen.delete(monitorId)
+  const boost = nikeBoostTimers.get(monitorId)
+  if (boost) { clearInterval(boost.timer); nikeBoostTimers.delete(monitorId) }
   const win = localMonitorWindows.get(monitorId)
   if (win) { try { win.destroy() } catch {} localMonitorWindows.delete(monitorId) }
 }
@@ -1265,7 +1525,6 @@ async function fetchLegoAvailability(url) {
 
 async function scrapeLocalProduct(monitor, url) {
   if (localMonitorScraping.has(monitor.id)) return null
-  const { session } = require('electron')
   const ses = session.defaultSession
 
   const p = (async () => {
@@ -1312,34 +1571,86 @@ async function scrapeLocalProduct(monitor, url) {
 
 // ── Shopify Local Monitor ────────────────────────────────────────────────────
 
+async function fetchShopifyProductsBrowser(url, baseUrl) {
+  return new Promise(resolve => {
+    const win = new BrowserWindow({
+      show: false, width: 1280, height: 900,
+      webPreferences: { nodeIntegration: false, contextIsolation: true }
+    })
+    win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+    let done = false
+    const finish = val => { if (!done) { done = true; clearTimeout(timer); try { win.destroy() } catch {} ; resolve(val) } }
+    const timer = setTimeout(() => { console.log(`[shopify-monitor] browser fetch timeout ${url}`); finish(null) }, 25000)
+    win.webContents.on('did-fail-load', (e, code) => { if (code !== -3) finish(null) })
+    win.webContents.on('did-finish-load', async () => {
+      try {
+        const text = await win.webContents.executeJavaScript(`document.body.innerText`)
+        const data = JSON.parse(text)
+        if (data.products) finish({ products: data.products, baseUrl })
+        else if (data.product) finish({ products: [data.product], baseUrl })
+        else finish(null)
+      } catch { finish(null) }
+    })
+    win.loadURL(url)
+  })
+}
+
 async function fetchShopifyProducts(monitor) {
   const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' }
   try {
     if (monitor.product_url) {
       const pu = monitor.product_url.trim().replace(/\/$/, '')
       const fetchUrl = pu.endsWith('.json') ? pu : `${pu}.json`
+      let baseUrl = (monitor.site_url || '').trim().replace(/\/$/, '')
+      if (!baseUrl.startsWith('http')) baseUrl = 'https://' + baseUrl
+
       const res = await fetch(fetchUrl, { headers, signal: AbortSignal.timeout(15000) })
-      if (!res.ok) return null
-      const ct = res.headers.get('content-type') || ''
-      if (!ct.includes('application/json')) return null
-      const data = await res.json()
-      if (!data.product) return null
-      const parsed = new URL(fetchUrl)
-      return { products: [data.product], baseUrl: `${parsed.protocol}//${parsed.hostname}` }
+      if (res.ok) {
+        const ct = res.headers.get('content-type') || ''
+        if (ct.includes('application/json')) {
+          const data = await res.json()
+          if (data.product) {
+            const parsed = new URL(fetchUrl)
+            return { products: [data.product], baseUrl: `${parsed.protocol}//${parsed.hostname}` }
+          }
+        }
+      }
+      // Fallback to browser (Cloudflare-protected sites)
+      console.log(`[shopify-monitor] fetch blocked for product URL, trying browser`)
+      return fetchShopifyProductsBrowser(fetchUrl, baseUrl)
     } else {
       let baseUrl = (monitor.site_url || '').trim().replace(/\/$/, '')
       if (!baseUrl.startsWith('http')) baseUrl = 'https://' + baseUrl
-      const res = await fetch(`${baseUrl}/products.json?limit=250`, { headers, signal: AbortSignal.timeout(15000) })
-      console.log(`[shopify-monitor] ${baseUrl}/products.json status=${res.status}`)
-      if (!res.ok) return null
-      const ct = res.headers.get('content-type') || ''
-      if (!ct.includes('application/json')) {
-        console.log(`[shopify-monitor] ${monitor.name} returned non-JSON (${ct}) — not a Shopify store`)
-        return null
+
+      // Try /products.json first, then common collection fallbacks for stores that disable it
+      const candidateUrls = [
+        `${baseUrl}/products.json?limit=250`,
+        `${baseUrl}/collections/all/products.json?limit=250`,
+        `${baseUrl}/collections/new/products.json?limit=250`,
+        `${baseUrl}/collections/shop-all/products.json?limit=250`,
+      ]
+
+      for (const jsonUrl of candidateUrls) {
+        const res = await fetch(jsonUrl, { headers, signal: AbortSignal.timeout(15000) })
+        console.log(`[shopify-monitor] ${jsonUrl} status=${res.status}`)
+        if (res.status === 404) continue  // endpoint disabled — try next
+        if (res.ok) {
+          const ct = res.headers.get('content-type') || ''
+          if (ct.includes('application/json')) {
+            const data = await res.json()
+            if (Array.isArray(data.products)) return { products: data.products, baseUrl }
+          }
+          // Got a response but not JSON — likely a Cloudflare challenge page
+          console.log(`[shopify-monitor] non-JSON response for ${jsonUrl}, trying browser`)
+          return fetchShopifyProductsBrowser(jsonUrl, baseUrl)
+        }
+        // Non-404 error (403 Cloudflare block, etc.) — use browser
+        console.log(`[shopify-monitor] fetch blocked for ${monitor.name} (status ${res.status}), trying browser`)
+        return fetchShopifyProductsBrowser(jsonUrl, baseUrl)
       }
-      const data = await res.json()
-      if (!Array.isArray(data.products)) return null
-      return { products: data.products, baseUrl }
+
+      console.log(`[shopify-monitor] all endpoints 404 for ${monitor.name}`)
+      return null
     }
   } catch (e) { console.log(`[shopify-monitor] fetchShopifyProducts error: ${e.message}`); return null }
 }
@@ -1455,11 +1766,469 @@ async function sendShopifyDiscordPing(monitor, product, baseUrl, type, variants 
   } catch (err) { console.error('[shopify-monitor] Discord ping failed:', err.message) }
 }
 
+// ── Funko (SFCC) Monitor ──────────────────────────────────────────────────────
+
+function loadOneFunkoPage(url) {
+  return new Promise(resolve => {
+    const win = new BrowserWindow({
+      show: false, width: 1280, height: 900,
+      webPreferences: { nodeIntegration: false, contextIsolation: true }
+    })
+    win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+    let done = false
+    const finish = val => { if (!done) { done = true; clearTimeout(timer); try { win.destroy() } catch {}; resolve(val) } }
+    const timer = setTimeout(() => { console.log(`[funko-monitor] browser timeout: ${url}`); finish(null) }, 35000)
+    win.webContents.on('did-fail-load', (e, code) => { if (code !== -3) finish(null) })
+    win.webContents.on('did-finish-load', async () => {
+      try {
+        const result = await win.webContents.executeJavaScript(`
+          (function() {
+            const scripts = document.querySelectorAll('script[type="application/ld+json"]')
+            for (const s of scripts) {
+              try {
+                const data = JSON.parse(s.textContent)
+                const list = data['@type'] === 'ItemList' ? data
+                  : (Array.isArray(data['@graph']) ? data['@graph'].find(n => n['@type'] === 'ItemList') : null)
+                if (list && Array.isArray(list.itemListElement)) {
+                  const products = list.itemListElement.map(item => ({
+                    name: item.item?.name || '',
+                    sku: item.item?.sku || item.item?.mpn || '',
+                    url: item.item?.offers?.url || item.item?.['@id'] || '',
+                    price: item.item?.offers?.price ?? null,
+                    image: Array.isArray(item.item?.image) ? item.item.image[0] : (item.item?.image || ''),
+                    available: (item.item?.offers?.availability || '').includes('InStock')
+                  }))
+                  // Try to get total count from DOM (SFCC pagination patterns)
+                  let total = list.numberOfItems || null
+                  if (!total) {
+                    const selectors = [
+                      '[data-count]',
+                      '.results-hits',
+                      '.product-count',
+                      '.items-count',
+                      '.search-results-count',
+                      '[data-total]',
+                    ]
+                    for (const sel of selectors) {
+                      const el = document.querySelector(sel)
+                      if (el) {
+                        const val = parseInt(el.getAttribute('data-count') || el.getAttribute('data-total') || el.textContent, 10)
+                        if (!isNaN(val) && val > 0) { total = val; break }
+                      }
+                    }
+                  }
+                  if (!total) {
+                    // Last resort: look for any text like "80 results" or "1-20 of 80"
+                    const body = document.body.innerText
+                    const m = body.match(/\bof\s+(\d+)\s+results?\b/i) || body.match(/(\d+)\s+results?\b/i)
+                    if (m) total = parseInt(m[1], 10)
+                  }
+                  return { products, total: total || null, pageSize: products.length }
+                }
+              } catch {}
+            }
+            return null
+          })()
+        `)
+        if (result && result.products && result.products.length > 0) finish(result)
+        else finish(null)
+      } catch (e) { console.log(`[funko-monitor] JS extract error: ${e.message}`); finish(null) }
+    })
+    win.loadURL(url)
+  })
+}
+
+async function fetchFunkoProducts(url) {
+  // Strip any existing start/sz params so we always start from page 1
+  const baseUrl = url.replace(/[?&](start|sz)=[^&]*/g, '').replace(/[?&]$/, '')
+  const sep = baseUrl.includes('?') ? '&' : '?'
+
+  const MAX_PAGES = 4  // cap at 4 pages (80 products for sz=20)
+
+  const first = await loadOneFunkoPage(`${baseUrl}${sep}start=0&sz=24`)
+  if (!first) return null
+
+  const { products, total, pageSize } = first
+  const sz = pageSize || 24
+
+  // If we know the total, use it; otherwise speculatively fetch up to MAX_PAGES
+  const totalCount = total || 0
+  const pageUrls = []
+  if (totalCount > sz) {
+    for (let start = sz; start < totalCount; start += sz)
+      pageUrls.push(`${baseUrl}${sep}start=${start}&sz=${sz}`)
+  } else {
+    // No total available — speculatively fetch remaining pages in parallel
+    for (let p = 1; p < MAX_PAGES; p++)
+      pageUrls.push(`${baseUrl}${sep}start=${p * sz}&sz=${sz}`)
+  }
+
+  if (pageUrls.length === 0) {
+    console.log(`[funko-monitor] Page 1: ${products.length} products (1 page)`)
+    return products
+  }
+
+  console.log(`[funko-monitor] Page 1: ${products.length} products, fetching ${pageUrls.length} more page(s) in parallel`)
+  const rest = await Promise.all(pageUrls.map(u => loadOneFunkoPage(u)))
+  for (const page of rest) {
+    if (page && page.products && page.products.length > 0) products.push(...page.products)
+  }
+
+  // Deduplicate by SKU
+  const seen = new Map()
+  for (const p of products) {
+    const key = p.sku || p.url || p.name
+    if (!seen.has(key)) seen.set(key, p)
+  }
+  console.log(`[funko-monitor] Total after all pages: ${seen.size} products`)
+  return [...seen.values()]
+}
+
+async function runFunkoMonitor(monitor) {
+  const url = (monitor.site_url || 'https://funko.com/new-featured/new-releases/').trim()
+  console.log(`[funko-monitor] Running ${monitor.name} url=${url}`)
+  const products = await fetchFunkoProducts(url)
+  if (!products) { console.log(`[funko-monitor] fetch failed for ${monitor.name}`); return }
+  console.log(`[funko-monitor] Got ${products.length} products`)
+
+  // Push to live feed (reuse shopify feed UI)
+  const feedProducts = products.map(p => ({
+    id: p.sku || p.name,
+    title: p.name,
+    handle: p.url || null,  // full URL — renderer will use directly if it starts with http
+    images: p.image ? [{ src: p.image }] : [],
+    variants: [{ id: p.sku, title: 'Default', available: p.available, price: p.price != null ? String(p.price) : null }]
+  }))
+  notifyRenderer('shopify:feedUpdate', { monitorId: monitor.id, monitorName: monitor.name, products: feedProducts, baseUrl: 'https://funko.com' })
+
+  const keywords = monitor.keywords
+    ? monitor.keywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
+    : []
+
+  const isFirstRun = !funkoMonitorSeen.has(monitor.id)
+  if (isFirstRun) funkoMonitorSeen.set(monitor.id, new Map())
+  const seen = funkoMonitorSeen.get(monitor.id)
+
+  for (const product of products) {
+    const id = product.sku || product.name
+    if (!id) continue
+    if (keywords.length > 0 && !keywords.some(kw => product.name.toLowerCase().includes(kw))) continue
+
+    const curr = { available: product.available, price: product.price }
+
+    if (isFirstRun) { seen.set(id, curr); continue }
+
+    if (!seen.has(id)) {
+      seen.set(id, curr)
+      if (product.available) {
+        await sendFunkoDiscordPing(monitor, product, 'new')
+        notifyRenderer('monitor:alert', { type: 'new', monitorName: monitor.name, product: { title: product.name, image: product.image } })
+      }
+      continue
+    }
+
+    const prev = seen.get(id)
+    seen.set(id, curr)
+
+    if (product.available && !prev.available) {
+      await sendFunkoDiscordPing(monitor, product, 'restock')
+      notifyRenderer('monitor:alert', { type: 'restock', monitorName: monitor.name, product: { title: product.name, image: product.image } })
+    }
+    if (monitor.price_alert && curr.price != null && prev.price != null && curr.price < prev.price) {
+      const threshold = monitor.price_threshold ? parseFloat(monitor.price_threshold) : null
+      if (!threshold || curr.price <= threshold) {
+        await sendFunkoDiscordPing(monitor, product, 'price_drop', { oldPrice: prev.price, newPrice: curr.price })
+      }
+    }
+  }
+}
+
+async function sendFunkoDiscordPing(monitor, product, type, extra = {}) {
+  const color = type === 'price_drop' ? 0xff9500 : type === 'restock' ? 0x00ff7f : 0x5865f2
+  let title, fields
+
+  if (type === 'price_drop') {
+    title = `💰 Price Drop: ${product.name}`
+    fields = [
+      { name: 'Was', value: `$${parseFloat(extra.oldPrice).toFixed(2)}`, inline: true },
+      { name: 'Now', value: `$${parseFloat(extra.newPrice).toFixed(2)}`, inline: true },
+      { name: 'Saved', value: `$${(extra.oldPrice - extra.newPrice).toFixed(2)}`, inline: true },
+      { name: 'Site', value: 'Funko', inline: false }
+    ]
+  } else {
+    title = `${type === 'restock' ? '🔄 Restock' : '🆕 New Product'}: ${product.name}`
+    fields = [
+      { name: 'Price', value: product.price != null ? `$${parseFloat(product.price).toFixed(2)}` : 'N/A', inline: true },
+      { name: 'Site', value: 'Funko', inline: true },
+      { name: 'Status', value: product.available ? 'In Stock' : 'Out of Stock', inline: true }
+    ]
+  }
+
+  const payload = {
+    content: monitor.ping_role ? `<@&${monitor.ping_role}>` : undefined,
+    embeds: [{
+      title, url: product.url || 'https://funko.com/new-featured/new-releases/',
+      color, fields,
+      footer: { text: `Resell Tracker Monitor • ${monitor.name}` },
+      timestamp: new Date().toISOString()
+    }]
+  }
+  if (product.image) payload.embeds[0].thumbnail = { url: product.image }
+  if (!payload.content) delete payload.content
+
+  try {
+    await fetch(monitor.webhook_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) })
+  } catch (err) { console.error('[funko-monitor] Discord ping failed:', err.message) }
+}
+
+// ── Nike SNKRS Monitor ────────────────────────────────────────────────────────
+const NIKE_SNKRS_URL = 'https://api.nike.com/product_feed/threads/v2/?anchor=0&count=60&filter=marketplace(US)&filter=language(en)&filter=channelId(010794e5-35fe-4e32-aaff-cd2c74f89d61)'
+
+
+function fetchNikeProducts(url) {
+  return new Promise((resolve) => {
+    const req = https.request(url, {
+      headers: {
+        'User-Agent':  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept':      'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'nike-api-caller-id': 'com.nike.commerce.snkrs.web',
+      }
+    }, res => {
+      let body = ''
+      res.on('data', c => body += c)
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(body)
+          const products = []
+          let loggedImageUrls = false
+          for (const thread of (json.objects || [])) {
+            for (const info of (thread.productInfo || [])) {
+              const content  = info.productContent || {}
+              const merch    = info.merchProduct   || {}
+              const launch   = info.launchView     || {}
+              const price    = info.merch_price?.currentPrice
+                            ?? info.skus?.[0]?.msrp
+                            ?? info.skus?.[0]?.localizedSpecialPrice
+                            ?? info.skus?.[0]?.price
+                            ?? info.pricing?.currentPrice
+                            ?? null
+              const slug     = content.slug || ''
+              const launchDate = launch.startEntryDate || null
+              const method   = launch.method || null // DAN=draw, LEO/FLOW=FCFS
+              const now      = Date.now()
+              const launchMs = launchDate ? new Date(launchDate).getTime() : null
+              // status: upcoming = not live yet, live = FCFS window open, draw_open = draw accepting entries
+              // Skip products Nike itself has marked inactive/sold out
+              if (merch.status !== 'ACTIVE') continue
+              // Only show products with an actual SNKRS launch event (draw or FCFS window)
+              // Products with no launchDate are just regular browseable items in the SNKRS app
+              if (!launchDate) continue
+              const launchAge = launchMs ? Date.now() - launchMs : 0
+              // Hide drops that launched more than 2 hours ago — already sold out
+              if (launchMs && launchAge > 2 * 60 * 60 * 1000) continue
+              // Hide upcoming drops more than 14 days away (too far out to be useful)
+              const msUntilLaunch = launchMs ? launchMs - Date.now() : 0
+              if (launchMs && msUntilLaunch > 14 * 24 * 60 * 60 * 1000) continue
+              let status = 'upcoming'
+              if (launchMs && launchMs <= now) {
+                status = (method === 'DAN') ? 'draw_open' : 'live'
+              }
+              // Use static.nike.com image from publishedContent (different CDN, resolves fine)
+              // Walk all nodes recursively to find squarishURL / portraitURL on static.nike.com
+              function findNikeImg(nodes) {
+                if (!Array.isArray(nodes)) return ''
+                for (const n of nodes) {
+                  const url = n.properties?.squarishURL || n.properties?.portraitURL || n.properties?.landscapeURL || ''
+                  if (url && url.startsWith('https://static.nike.com')) return url
+                  const deep = findNikeImg(n.nodes)
+                  if (deep) return deep
+                }
+                return ''
+              }
+              const allPubNodes = thread.publishedContent?.nodes || []
+              let image = findNikeImg(allPubNodes)
+              if (!image) {
+                // Fall back to wsrv.nl proxy for Scene7 URL
+                const rawImg = info.imageUrls?.productImageUrl || ''
+                const originUrl = rawImg || (merch.styleColor ? `https://secure-images.nike.com/is/image/DotCom/${merch.styleColor.replace('-', '_')}?wid=440&hei=440` : '')
+                image = originUrl ? `https://wsrv.nl/?url=${encodeURIComponent(originUrl)}&w=440&h=440&output=jpg&q=85` : ''
+              }
+              if (!loggedImageUrls) {
+                console.log('[nike-monitor] final image URL:', image)
+                loggedImageUrls = true
+              }
+              // Collect available sizes from skus
+              const sizes = (info.skus || [])
+                .map(s => s.nikeSize)
+                .filter(Boolean)
+                .sort((a, b) => parseFloat(a) - parseFloat(b))
+              products.push({
+                id:        `${thread.id}::${merch.pid || slug}`,
+                pid:       merch.pid || slug,
+                name:      [content.title, content.colorDescription].filter(Boolean).join(' — '),
+                styleColor: merch.styleColor || '',
+                url:       slug ? (thread.publishType === 'LAUNCH' ? `https://www.nike.com/launch/t/${slug}` : `https://www.nike.com/t/${slug}`) : 'https://www.nike.com/snkrs',
+                image,
+                price,
+                method,
+                launchDate,
+                status,
+                sizes,
+              })
+            }
+          }
+          resolve(products)
+        } catch (e) { console.log(`[nike-monitor] parse error: ${e.message}`); resolve(null) }
+      })
+    })
+    req.setTimeout(15000, () => { req.destroy(); resolve(null) })
+    req.on('error', (e) => { console.log(`[nike-monitor] fetch error: ${e.message}`); resolve(null) })
+    req.end()
+  })
+}
+
+async function runNikeMonitor(monitor) {
+  const url = (monitor.site_url || NIKE_SNKRS_URL).trim()
+  console.log(`[nike-monitor] Running ${monitor.name}`)
+
+  const products = await fetchNikeProducts(url)
+  if (!products) { console.log(`[nike-monitor] fetch failed for ${monitor.name}`); return }
+  console.log(`[nike-monitor] Got ${products.length} products`)
+
+  const isFirstRun = !nikeMonitorSeen.has(monitor.id)
+  if (isFirstRun) nikeMonitorSeen.set(monitor.id, new Map())
+  const seen = nikeMonitorSeen.get(monitor.id)
+
+  // Push all products to live feed
+  const feedProducts = products.map(p => ({
+    id: p.id, title: p.name, handle: p.url,
+    images: p.image ? [{ src: p.image }] : [],
+    launchDate: p.launchDate,
+    status: p.status,
+    styleColor: p.styleColor,
+    variants: [{ id: p.pid, title: p.method === 'DAN' ? 'Draw' : 'FCFS', available: p.status === 'live' || p.status === 'draw_open', price: p.price != null ? String(p.price) : null }]
+  }))
+  notifyRenderer('shopify:feedUpdate', { monitorId: monitor.id, monitorName: monitor.name, products: feedProducts, baseUrl: 'https://www.nike.com' })
+
+
+  if (isFirstRun) {
+    for (const p of products) seen.set(p.id, { status: p.status, launchDate: p.launchDate, method: p.method })
+    return
+  }
+
+  // Build keyword filter if set on this monitor
+  const kws = monitor.keywords
+    ? monitor.keywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
+    : []
+  const matchesKeywords = (name) => kws.length === 0 || kws.some(k => name.toLowerCase().includes(k))
+
+  for (const p of products) {
+    const prev = seen.get(p.id)
+    if (!prev) {
+      // New product announced
+      seen.set(p.id, { status: p.status, launchDate: p.launchDate, method: p.method })
+      if (!matchesKeywords(p.name)) continue
+      if (monitor.webhook_url) await sendNikeDiscordPing(monitor, p, 'new')
+      notifyRenderer('monitor:alert', { isNike: true, monitorId: monitor.id, monitorName: monitor.name, type: 'new', title: p.name, variant: p.styleColor, price: p.price, url: p.url, image: p.image, sizes: p.sizes })
+    } else {
+      const statusChanged = p.status !== prev.status
+      const methodChanged = p.method !== prev.method
+      seen.set(p.id, { status: p.status, launchDate: p.launchDate, method: p.method })
+      if (!matchesKeywords(p.name)) continue
+      if (statusChanged) {
+        const alertType = p.status === 'live' ? 'live' : p.status === 'draw_open' ? 'draw_open' : null
+        if (alertType) {
+          if (monitor.webhook_url) await sendNikeDiscordPing(monitor, p, alertType)
+          notifyRenderer('monitor:alert', { isNike: true, monitorId: monitor.id, monitorName: monitor.name, type: alertType, title: p.name, variant: p.styleColor, price: p.price, url: p.url, image: p.image, sizes: p.sizes })
+        }
+      }
+      if (methodChanged && prev.method === 'DAN' && p.method !== 'DAN') {
+        if (monitor.webhook_url) await sendNikeDiscordPing(monitor, p, 'method_change')
+        notifyRenderer('monitor:alert', { isNike: true, monitorId: monitor.id, monitorName: monitor.name, type: 'method_change', title: p.name, variant: p.styleColor, price: p.price, url: p.url, image: p.image, sizes: p.sizes })
+      }
+    }
+  }
+
+  // ── Auto-boost: poll at 10s when a launch is within 5 minutes ──────────────
+  const BOOST_WINDOW   = 5  * 60 * 1000  // start boost 5 min before launch
+  const BOOST_DURATION = 10 * 60 * 1000  // stop boost 10 min after launch
+  const BOOST_INTERVAL = 10 * 1000       // 10s fast poll
+
+  const now = Date.now()
+  const existingBoost = nikeBoostTimers.get(monitor.id)
+
+  // Clear expired boost
+  if (existingBoost && now > existingBoost.stopAt) {
+    clearInterval(existingBoost.timer)
+    nikeBoostTimers.delete(monitor.id)
+    console.log(`[nike-monitor] Boost mode ended for ${monitor.name}`)
+    notifyRenderer('monitor:nikeBoost', { monitorId: monitor.id, active: false })
+  }
+
+  // Check if any upcoming drop is imminent
+  if (!nikeBoostTimers.has(monitor.id)) {
+    const imminent = products.find(p => {
+      if (!p.launchDate || p.status !== 'upcoming') return false
+      const msUntil = new Date(p.launchDate).getTime() - now
+      return msUntil > 0 && msUntil <= BOOST_WINDOW
+    })
+    if (imminent) {
+      const stopAt = new Date(imminent.launchDate).getTime() + BOOST_DURATION
+      const timer  = setInterval(() => runNikeMonitor(monitor).catch(() => {}), BOOST_INTERVAL)
+      nikeBoostTimers.set(monitor.id, { timer, stopAt })
+      console.log(`[nike-monitor] Boost mode ON for ${monitor.name} — ${imminent.name} drops soon`)
+      notifyRenderer('monitor:nikeBoost', { monitorId: monitor.id, active: true, productName: imminent.name, launchDate: imminent.launchDate })
+    }
+  }
+}
+
+async function sendNikeDiscordPing(monitor, product, type) {
+  const colors   = { new: 0x5865f2, live: 0x00d26a, draw_open: 0xff9500, method_change: 0xff3c3c }
+  const labels   = { new: '🆕 New Drop Announced', live: '⚡ Drop Live Now', draw_open: '🎟 Draw Now Open', method_change: '🔄 Draw → FCFS' }
+  const methodLabel = product.method === 'DAN' ? 'Draw' : product.method === 'LEO' ? 'FCFS (Queue)' : product.method === 'FLOW' ? 'FCFS' : product.method || 'N/A'
+
+  const searchQ = encodeURIComponent(product.styleColor || product.name)
+  const stockxUrl = `https://stockx.com/search?s=${searchQ}`
+  const goatUrl   = `https://www.goat.com/search?query=${searchQ}`
+  const launchTs  = product.launchDate ? `<t:${Math.floor(new Date(product.launchDate).getTime()/1000)}:F> (<t:${Math.floor(new Date(product.launchDate).getTime()/1000)}:R>)` : 'TBA'
+
+  const payload = {
+    content: monitor.ping_role ? `<@&${monitor.ping_role}>` : undefined,
+    embeds: [{
+      title:  `${labels[type] || '👟 Nike'}: ${product.name}`,
+      url:    product.url,
+      color:  colors[type] || 0x5865f2,
+      fields: [
+        { name: 'Style Color', value: product.styleColor || 'N/A', inline: true },
+        { name: 'Retail',      value: product.price != null ? `$${parseFloat(product.price).toFixed(2)}` : 'TBA', inline: true },
+        { name: 'Method',      value: methodLabel, inline: true },
+        { name: 'Launch',      value: launchTs, inline: false },
+        ...(product.sizes?.length ? [{
+          name: `Sizes (${product.sizes.length}) — click to open product page`,
+          value: product.sizes.map(s => `[${s}](${product.url})`).join(' · '),
+          inline: false
+        }] : []),
+        { name: 'Resell Research', value: `[StockX](${stockxUrl}) • [GOAT](${goatUrl})`, inline: false },
+      ],
+      thumbnail: product.image ? { url: product.image } : undefined,
+      footer:    { text: `Resell Tracker • ${monitor.name}` },
+      timestamp: new Date().toISOString(),
+    }]
+  }
+  if (!payload.content) delete payload.content
+  try {
+    await fetch(monitor.webhook_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) })
+  } catch (err) { console.error('[nike-monitor] Discord ping failed:', err.message) }
+}
+
 // ── BB / Amazon Local Monitor ────────────────────────────────────────────────
 
 async function runLocalMonitor(monitor) {
   console.log(`[local-monitor] runLocalMonitor called: ${monitor.name} site_type=${monitor.site_type}`)
   if (monitor.site_type === 'shopify') return runShopifyMonitor(monitor)
+  if (monitor.site_type === 'funko')   return runFunkoMonitor(monitor)
+  if (monitor.site_type === 'nike')    return runNikeMonitor(monitor)
   const url = (monitor.product_url || monitor.site_url || '').trim()
   if (!url) return
 
@@ -1686,4 +2455,5 @@ async function fetchEbay(query, sold) {
     win.loadURL(url)
   })
 }
+
 

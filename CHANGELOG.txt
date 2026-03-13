@@ -1,6 +1,19 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
+v2.2.0 — 2026-03-13
+--------------------
+ADDED
+  - Deal Scanner tab — search any item to find eBay listings priced below
+    market value. Compares active listing prices against recent sold prices
+    (comps) and flags deals 15%+ below average.
+  - Deal score system — each deal gets a 0-100 score based on how far below
+    market the listing is. Color-coded: red (hot), yellow (good), green (ok).
+  - Stats bar showing average sold price, number of comps, active listings,
+    and deals found.
+  - Works for any item — sneakers, electronics, kitchen stuff, collectibles,
+    anything sold on eBay.
+
 v2.1.2 — 2026-03-13
 --------------------
 SECURITY

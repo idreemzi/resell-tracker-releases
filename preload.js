@@ -66,6 +66,9 @@ contextBridge.exposeInMainWorld('api', {
   },
   onSelfbotStatus:  cb => ipcRenderer.on('selfbot:statusUpdate', (_, d) => cb(d)),
   onDiscordFeed:    cb => ipcRenderer.on('discord:feedMessage',  (_, d) => cb(d)),
+  deals: {
+    scan: query => ipcRenderer.invoke('deals:scan', query),
+  },
   proxies: {
     getAll:  ()      => ipcRenderer.invoke('proxies:getAll'),
     add:     list    => ipcRenderer.invoke('proxies:add', list),

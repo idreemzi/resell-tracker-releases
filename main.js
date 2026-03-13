@@ -2614,4 +2614,115 @@ async function fetchEbay(query, sold) {
   })
 }
 
+// ── Deal Scanner ──────────────────────────────────────────────────────────────
+const EBAY_DEAL_EXTRACT = `(function(){
+  var items = Array.from(document.querySelectorAll('.s-item'));
+  var out = [];
+  for(var i=0; i<items.length && out.length<40; i++){
+    var el = items[i];
+    var titleEl = el.querySelector('.s-item__title');
+    var priceEl = el.querySelector('.s-item__price');
+    if(!titleEl || !priceEl) continue;
+    var t = (titleEl.innerText||'').replace(/^New listing\\s*/i,'').trim();
+    if(!t || t==='Shop on eBay') continue;
+    var priceText = (priceEl.innerText||'').trim();
+    var priceNum = parseFloat(priceText.replace(/[^0-9.]/g,'')) || 0;
+    var imgEl = el.querySelector('img');
+    var imgSrc = imgEl ? (imgEl.src||imgEl.getAttribute('data-src')||'') : '';
+    if(imgSrc.includes('s-l140')||imgSrc.length<10) imgSrc='';
+    var linkEl = el.querySelector('a.s-item__link') || el.querySelector('a[href*="/itm/"]');
+    var sellerEl = el.querySelector('.s-item__seller-info-text, .s-item__seller-info');
+    var seller = sellerEl ? sellerEl.innerText.trim() : '';
+    var shippingEl = el.querySelector('.s-item__shipping, .s-item__freeXDays');
+    var shipping = shippingEl ? shippingEl.innerText.trim() : '';
+    var timeEl = el.querySelector('.s-item__time-left, .s-item__listingDate, .s-item__ended-date');
+    var timeInfo = timeEl ? timeEl.innerText.trim() : '';
+    out.push({ title:t, price:priceText, priceNum:priceNum, image:imgSrc,
+               url:linkEl?linkEl.href:'', seller:seller, shipping:shipping, timeInfo:timeInfo });
+  }
+  return out;
+})()`
+
+function fetchEbayDeals(query, sold) {
+  return new Promise((resolve) => {
+    const q = encodeURIComponent(query)
+    const url = sold
+      ? `https://www.ebay.com/sch/i.html?_nkw=${q}&_sacat=0&_from=R40&rt=nc&LH_Sold=1&LH_Complete=1`
+      : `https://www.ebay.com/sch/i.html?_nkw=${q}&_sacat=0`
+
+    const { session: sess } = require('electron')
+    const ebaySess = sess.fromPartition('persist:ebay')
+
+    const win = new BrowserWindow({
+      show: false, width: 1280, height: 900,
+      webPreferences: { nodeIntegration: false, contextIsolation: true, session: ebaySess }
+    })
+    win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+
+    let done = false
+    const finish = (val) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      try { win.destroy() } catch {}
+      resolve(val || [])
+    }
+
+    const timer = setTimeout(() => finish([]), 30000)
+    const wc = win.webContents
+    const safe = (fn) => { try { if (!win.isDestroyed()) return fn() } catch {} return Promise.resolve(null) }
+
+    wc.on('did-finish-load', async () => {
+      if (done) return
+      try {
+        const title = await safe(() => wc.getTitle()) || ''
+        if (title.includes('Pardon') || title.includes('Interruption')) {
+          safe(() => win.show())
+          await new Promise(r => setTimeout(r, 20000))
+          if (done) return
+          safe(() => win.hide())
+          await new Promise(r => setTimeout(r, 3000))
+          if (done) return
+        }
+        for (let i = 0; i < 15 && !done; i++) {
+          await new Promise(r => setTimeout(r, 1000))
+          if (done) return
+          const count = await safe(() => wc.executeJavaScript(`document.querySelectorAll('.s-item').length`))
+          if (!count || count < 2) continue
+          const results = await safe(() => wc.executeJavaScript(EBAY_DEAL_EXTRACT))
+          if (results?.length) { finish(results); return }
+        }
+      } catch {}
+      finish([])
+    })
+
+    win.loadURL(url)
+  })
+}
+
+ipcMain.handle('deals:scan', async (_, query) => {
+  // Run sold first, then active (sequential to avoid double bot challenge)
+  const soldRaw = await fetchEbayDeals(query, true)
+  const activeRaw = await fetchEbayDeals(query, false)
+
+  const soldPrices = soldRaw.map(r => r.priceNum).filter(p => p > 0)
+  if (!soldPrices.length) return { error: 'No sold data found', deals: [], avgSold: 0, soldCount: 0, activeCount: activeRaw.length }
+
+  soldPrices.sort((a, b) => a - b)
+  const median = soldPrices[Math.floor(soldPrices.length / 2)]
+  const mean = soldPrices.reduce((a, b) => a + b, 0) / soldPrices.length
+  const avgSold = (median + mean) / 2
+
+  const deals = activeRaw
+    .filter(r => r.priceNum > 0)
+    .map(r => {
+      const pctBelow = ((avgSold - r.priceNum) / avgSold) * 100
+      const dealScore = Math.min(100, Math.max(0, Math.round(pctBelow * 2)))
+      return { ...r, avgSold: Math.round(avgSold * 100) / 100, pctBelow: Math.round(pctBelow), dealScore }
+    })
+    .filter(r => r.pctBelow >= 15)
+    .sort((a, b) => b.pctBelow - a.pctBelow)
+
+  return { deals, avgSold: Math.round(avgSold * 100) / 100, soldCount: soldPrices.length, activeCount: activeRaw.length }
+})
 

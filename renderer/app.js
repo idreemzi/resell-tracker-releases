@@ -988,6 +988,10 @@ function bindEvents() {
     renderShopifyFeed()
   })
 
+  // Deal Scanner
+  $('btn-deals-scan').addEventListener('click', runDealScan)
+  $('deals-query').addEventListener('keydown', e => { if (e.key === 'Enter') runDealScan() })
+
   // Market Lookup
   $('btn-market-search').addEventListener('click', runMarketSearch)
   $('market-query').addEventListener('keydown', e => { if (e.key === 'Enter') runMarketSearch() })
@@ -2511,6 +2515,70 @@ function setMonitorType(type) {
   $('mon-type-product').classList.toggle('active', !isSite)
   $('mon-product-row').style.display  = isSite ? 'none' : ''
   $('mon-keywords-row').style.display = isSite ? '' : 'none'
+}
+
+// ── Deal Scanner ──────────────────────────────────────────────────────────────
+let _dealScanning = false
+async function runDealScan() {
+  const query = $('deals-query').value.trim()
+  if (!query || _dealScanning) return
+  _dealScanning = true
+
+  $('deals-idle').style.display    = 'none'
+  $('deals-grid').style.display    = 'none'
+  $('deals-empty').style.display   = 'none'
+  $('deals-stats').style.display   = 'none'
+  $('deals-loading').style.display = 'flex'
+
+  try {
+    const result = await window.api.deals.scan(query)
+    $('deals-loading').style.display = 'none'
+
+    if (result.error || !result.deals || !result.deals.length) {
+      $('deals-empty').style.display = ''
+      _dealScanning = false
+      return
+    }
+
+    $('deals-avg-price').textContent   = '$' + result.avgSold.toFixed(2)
+    $('deals-sold-count').textContent  = result.soldCount
+    $('deals-active-count').textContent = result.activeCount
+    $('deals-found-count').textContent = result.deals.length
+    $('deals-stats').style.display     = 'flex'
+
+    $('deals-grid').innerHTML = result.deals.map(d => {
+      const scoreClass = d.dealScore >= 60 ? 'hot' : d.dealScore >= 40 ? 'good' : 'ok'
+      return `
+      <div class="deal-card" onclick="window.api.openExternal('${d.url.replace(/'/g, "\\'")}')">
+        <div class="deal-card-img">
+          ${d.image ? `<img src="${d.image}" alt="" />` : '<div class="deal-card-noimg">No Image</div>'}
+        </div>
+        <div class="deal-card-body">
+          <div class="deal-card-title">${esc(d.title)}</div>
+          <div class="deal-card-prices">
+            <span class="deal-price-current">${esc(d.price)}</span>
+            <span class="deal-price-avg">avg sold $${d.avgSold.toFixed(2)}</span>
+          </div>
+          <div class="deal-card-meta">
+            ${d.seller ? `<span>${esc(d.seller)}</span>` : ''}
+            ${d.shipping ? `<span>${esc(d.shipping)}</span>` : ''}
+            ${d.timeInfo ? `<span>${esc(d.timeInfo)}</span>` : ''}
+          </div>
+        </div>
+        <div class="deal-card-score deal-score-${scoreClass}">
+          <span class="deal-score-num">${d.dealScore}</span>
+          <span class="deal-score-label">Deal Score</span>
+          <span class="deal-pct">${d.pctBelow}% below</span>
+        </div>
+      </div>`
+    }).join('')
+    $('deals-grid').style.display = ''
+  } catch (e) {
+    console.error('Deal scan error:', e)
+    $('deals-loading').style.display = 'none'
+    $('deals-empty').style.display   = ''
+  }
+  _dealScanning = false
 }
 
 // ── Market Lookup ─────────────────────────────────────────────────────────────

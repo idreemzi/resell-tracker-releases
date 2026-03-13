@@ -41,6 +41,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Market Lookup
       </button>
+      <button class="tab-btn tab-deals" data-view="deals">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Deal Scanner
+      </button>
     </div>
     <div class="nav-right">
       <!-- Admin tool icon buttons -->
@@ -499,6 +503,45 @@
       <webview id="market-webview" style="display:none;width:100%;flex:1;min-height:600px;border-radius:10px;overflow:hidden" src="about:blank"></webview>
     </div>
 
+
+    <!-- ── Deal Scanner View ──────────────────────────────────────────── -->
+    <div id="view-deals" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Deal Scanner</h1>
+      </div>
+
+      <div class="deals-search-bar">
+        <div class="market-search-input-wrap">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="deals-query" class="market-search-input" placeholder="Search any item — sneakers, TVs, kitchen stuff..." />
+        </div>
+        <button class="btn-add" id="btn-deals-scan">Scan Deals</button>
+      </div>
+
+      <div id="deals-stats" class="deals-stats" style="display:none">
+        <div class="deals-stat"><span class="deals-stat-val" id="deals-avg-price">—</span><span class="deals-stat-label">Avg Sold</span></div>
+        <div class="deals-stat"><span class="deals-stat-val" id="deals-sold-count">—</span><span class="deals-stat-label">Sold Comps</span></div>
+        <div class="deals-stat"><span class="deals-stat-val" id="deals-active-count">—</span><span class="deals-stat-label">Active Listings</span></div>
+        <div class="deals-stat"><span class="deals-stat-val" id="deals-found-count">—</span><span class="deals-stat-label">Deals Found</span></div>
+      </div>
+
+      <div id="deals-loading" class="deals-loading" style="display:none">
+        <div class="deals-spinner"></div>
+        <p>Scanning eBay sold vs active prices... this takes ~20 seconds</p>
+      </div>
+
+      <div id="deals-idle" class="market-idle">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".25"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <p>Search any item to find deals priced below market value</p>
+      </div>
+
+      <div id="deals-grid" class="deals-grid" style="display:none"></div>
+
+      <div id="deals-empty" class="market-idle" style="display:none">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".25"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <p>No deals found — all active listings are at or above market price</p>
+      </div>
+    </div>
 
   </main>
 
@@ -1116,7 +1159,16 @@
     <div class="modal-body info-modal-body">
 
       <div class="info-section">
-        <div class="info-section-title info-version">v2.1.2 — Latest</div>
+        <div class="info-section-title info-version">v2.2.0 — Latest</div>
+        <ul class="info-list">
+          <li>Deal Scanner — search any item and find eBay listings priced below market value</li>
+          <li>Compares active listings against recent sold prices to calculate a deal score</li>
+          <li>Works for anything — sneakers, electronics, kitchen appliances, collectibles</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title info-version">v2.1.2</div>
         <ul class="info-list">
           <li>Security hardening — external link validation now blocks unsafe protocols</li>
           <li>Credential cleanup — removed leaked secrets from config templates</li>

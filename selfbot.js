@@ -6,6 +6,7 @@ const { Client } = require('discord.js-selfbot-v13')
 let client = null
 let _onAlert = null   // callback(data) → sent to renderer
 let _running = false
+let _starting = false  // true while login is in progress (prevents duplicate logins)
 
 const ATC_RE      = /atc|add.?to.?cart|cop|buy|checkout/i
 const MD_LINK_RE  = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g
@@ -68,7 +69,8 @@ function extractEmbedData(embeds) {
 }
 
 function start(config, onAlert, onStatusChange, onFeedMessage) {
-  if (_running) return
+  if (_running || _starting) return
+  _starting = true
 
   const { token, keywords = [], channelIds = [], feedChannelIds = [], caseSensitive = false } = config
   if (!token) { onStatusChange(false); return }
@@ -79,12 +81,15 @@ function start(config, onAlert, onStatusChange, onFeedMessage) {
 
   client.on('ready', () => {
     _running = true
+    _starting = false
     onStatusChange(true)
-    console.log(`[selfbot] Logged in as ${client.user.tag}`)
+    const u = client.user
+    console.log(`[selfbot] Logged in as ${u ? (u.tag || u.username || u.id) : 'unknown'}`)
   })
 
   client.on('messageCreate', msg => {
-    if (msg.author.id === client.user?.id) return
+    if (!client || !client.user) return
+    if (msg.author.id === client.user.id) return
     if (msg.author.bot || msg.webhookId) return
 
     const chanId  = String(msg.channelId || msg.channel?.id || '')
@@ -150,9 +155,24 @@ function start(config, onAlert, onStatusChange, onFeedMessage) {
     onStatusChange(false)
   })
 
+  // Timeout: if ready doesn't fire within 20s, treat as failed
+  const loginTimeout = setTimeout(() => {
+    if (!_running && client) {
+      console.error('[selfbot] login timed out — token may be invalid')
+      try { client.destroy() } catch {}
+      client = null
+      _starting = false
+      onStatusChange(false)
+    }
+  }, 20000)
+
+  client.on('ready', () => clearTimeout(loginTimeout))
+
   client.login(token).catch(err => {
+    clearTimeout(loginTimeout)
     console.error('[selfbot] login failed:', err.message)
     _running = false
+    _starting = false
     client = null
     onStatusChange(false)
   })
@@ -164,6 +184,7 @@ function stop() {
     client = null
   }
   _running = false
+  _starting = false
 }
 
 function isRunning() { return _running }

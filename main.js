@@ -101,7 +101,7 @@ async function syncFromSupabase() {
     let changed = false
     for (const name of ['inventory', 'sales', 'packages']) {
       const { data: rows, error } = await getSb().from(name).select('*').eq('user_id', uid)
-      if (error) { console.log(`[sync] ${name} fetch error:`, error.message); continue }
+      if (error) { const msg = typeof error.message === 'string' && error.message.includes('<html') ? `HTTP error (server returned HTML — likely 500/502/503)` : error.message; console.log(`[sync] ${name} fetch error: ${msg}`); continue }
       const remoteIds = new Set(rows.map(r => r.id))
       const localIds  = new Set(data[name].map(r => r.id))
       // Add new items from Supabase
@@ -132,6 +132,19 @@ let mainWindow
 let dataPath
 let photosDir
 let proxiesPath
+
+// ── Single-instance lock — prevent cache fights when auto-launch + manual open collide
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized() || !mainWindow.isVisible()) mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({

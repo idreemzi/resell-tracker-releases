@@ -442,11 +442,16 @@ function renderReleases() {
     const linksHtml = links.map(l => {
       const isPresale = l.startsWith('[PRESALE] ')
       const url = isPresale ? l.replace('[PRESALE] ', '') : l
-      let domain = ''
-      try { domain = new URL(url).hostname.replace('www.', '') } catch { domain = url }
+      let hostname = ''
+      try { hostname = new URL(url).hostname.replace('www.', '') } catch { hostname = url }
+      const siteName = hostname.split('.')[0].charAt(0).toUpperCase() + hostname.split('.')[0].slice(1)
       return `<div class="web-release-link-row">
-        ${isPresale ? '<span class="web-presale-badge">PRESALE</span>' : ''}
-        <a href="#" onclick="event.preventDefault();window.open('${esc(url)}','_blank')" class="web-release-link">${esc(domain)}</a>
+        <div class="web-release-link-label">${esc(siteName)}${isPresale ? '<span class="web-presale-badge">PRESALE</span>' : ''}</div>
+        <div class="web-release-link-url">
+          <div class="web-release-link-url-text">${esc(url)}</div>
+          <button class="web-release-link-btn" onclick="event.stopPropagation();navigator.clipboard.writeText('${esc(url)}');this.innerHTML='✓';setTimeout(()=>this.innerHTML='📋',1200)" title="Copy">📋</button>
+          <button class="web-release-link-btn" onclick="event.stopPropagation();window.open('${esc(url)}','_blank')" title="Open">↗</button>
+        </div>
       </div>`
     }).join('')
 
@@ -457,14 +462,23 @@ function renderReleases() {
         <svg class="web-rel-chevron" viewBox="0 0 24 24" width="16" height="16"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </div>
       <div class="web-release-compact-details" id="web-rel-details-${i}">
+        ${links.length ? `<button class="web-rel-sites-btn" onclick="event.stopPropagation();toggleRelSites(${i})">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          Site List
+        </button>` : ''}
         <div class="web-rel-info-grid">
           ${timeLocal ? `<div class="web-rel-info-item"><span class="web-rel-info-label">Time</span><span>${esc(timeLocal)}</span></div>` : ''}
           ${r.retailPrice ? `<div class="web-rel-info-item"><span class="web-rel-info-label">Retail</span><span>$${esc(r.retailPrice)}</span></div>` : ''}
-          ${r.resalePrice ? `<div class="web-rel-info-item"><span class="web-rel-info-label">Resale</span><span>$${esc(r.resalePrice)}</span></div>` : ''}
+          ${r.resalePrice ? `<div class="web-rel-info-item"><span class="web-rel-info-label">Resale</span><span style="color:var(--green)">$${esc(r.resalePrice)}</span></div>` : ''}
         </div>
         ${r.notes ? `<div class="web-rel-notes">${esc(r.notes)}</div>` : ''}
-        ${links.length ? `<button class="web-rel-sites-btn" onclick="event.stopPropagation();toggleRelSites(${i})">Site List</button>
-          <div class="web-rel-sites-panel" id="web-rel-sites-${i}">${linksHtml}</div>` : ''}
+      </div>
+      <div class="web-rel-sites-panel" id="web-rel-sites-${i}">
+        <button class="web-rel-back-btn" onclick="event.stopPropagation();toggleRelSites(${i})">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
+        ${linksHtml}
       </div>
     </div>`
   }).join('')
@@ -509,9 +523,9 @@ function toggleRelAccordion(i) {
 }
 
 function toggleRelSites(i) {
-  const el = document.getElementById(`web-rel-sites-${i}`)
-  if (!el) return
-  el.classList.toggle('web-rel-sites-visible')
+  const item = document.getElementById(`web-rel-${i}`)
+  if (!item) return
+  item.classList.toggle('web-show-sites')
 }
 
 // -- Data Loading --------------------------------------------------------------
@@ -1180,32 +1194,40 @@ function renderPackages() {
 
   empty.style.display = 'none'
 
-  const statusClass = {
-    'Ordered':          'pkg-status-ordered',
-    'Shipped':          'pkg-status-shipped',
-    'In Transit':       'pkg-status-transit',
-    'Out for Delivery': 'pkg-status-delivery',
-    'Delivered':        'pkg-status-delivered',
+  const STAGES = ['Ordered', 'Awaiting Pickup', 'In Transit', 'Out for Delivery', 'Delivered']
+  const SHORT  = { 'Awaiting Pickup': 'AWAITING', 'Out for Delivery': 'OUT FOR DEL.' }
+
+  function buildProgress(status) {
+    const isException = status === 'Exception'
+    const idx = STAGES.indexOf(status)
+    const stageIdx = idx !== -1 ? idx : 0
+    const sIdx = STAGES.indexOf(status); const progress = sIdx !== -1 ? sIdx : 0
+    return `<div class="pkg-pipeline" data-progress="${progress}">${STAGES.map((s, i) => {
+      const cls = isException ? 'error' : i < stageIdx ? 'done' : i === stageIdx ? 'active' : ''
+      const dot = cls === 'done' ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''
+      return `<div class="pkg-stage ${cls}"><div class="pkg-stage-dot">${dot}</div><span>${SHORT[s] || s.toUpperCase()}</span></div>`
+    }).join('')}</div>`
   }
 
-  list.innerHTML = packages.map(p => `
-    <div class="pkg-card">
+  list.innerHTML = packages.map(p => {
+    const status = p.status || 'Ordered'
+    const carrierBadge = p.carrier ? `<span class="pkg-carrier-badge">${esc(p.carrier.toUpperCase())}</span>` : ''
+    return `<div class="pkg-card">
       <div class="pkg-header">
         <div>
           <div class="pkg-name">${esc(p.nickname || p.trackingNumber)}</div>
-          ${p.nickname ? `<div class="pkg-tracking">${esc(p.trackingNumber)}</div>` : ''}
+          <div class="pkg-tracking-row">${carrierBadge} <span class="pkg-tracking-num">${esc(p.trackingNumber)}</span></div>
         </div>
-        <span class="pkg-status ${statusClass[p.status] || 'pkg-status-ordered'}">${esc(p.status || 'Ordered')}</span>
-      </div>
-      <div class="pkg-footer">
-        <span>${p.carrier || 'Unknown carrier'}${p.deliveryDate ? ` · Est. ${new Date(p.deliveryDate).toLocaleDateString()}` : ''}</span>
         <div class="pkg-actions">
           <button class="btn-icon" onclick="openCarrierSite('${esc(p.trackingNumber)}','${esc(p.carrier || '')}')" title="Track on carrier site">🔗</button>
           <button class="btn-icon" onclick="openPkgModal(${JSON.stringify(p).replace(/"/g,'&quot;')})">✏️</button>
           <button class="btn-icon danger" onclick="confirmDelete('packages','${p.id}','${esc(p.nickname || p.trackingNumber)}')">🗑️</button>
         </div>
       </div>
-    </div>`).join('')
+      ${buildProgress(status)}
+      ${p.lastEvent ? `<div class="pkg-latest-event">${esc(p.lastEvent)}</div>` : ''}
+    </div>`
+  }).join('')
 }
 
 function openPkgModal(item) {

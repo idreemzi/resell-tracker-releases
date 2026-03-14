@@ -1,16 +1,11 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
-v2.3.0 — 2026-03-13
+v2.3.1 — 2026-03-13
 --------------------
-ADDED
-  - AI Resell Advisor tab — powered by Claude AI, chat-style interface that
-    recommends high-volume items to resell, where to source them cheap, expected
-    profit margins, and how fast they sell.
-  - Quick-start suggestion chips: top items to flip, thrift store guide, best
-    kitchen flips, retail arbitrage tips.
-  - Claude API key field in Settings — key stored locally, never shared.
-  - Conversation memory — advisor remembers context within the session.
+REMOVED
+  - Deal Scanner and AI Advisor tabs removed — features did not meet
+    quality bar for reliable sourcing recommendations.
 
 v2.2.0 — 2026-03-13
 --------------------

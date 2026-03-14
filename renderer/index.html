@@ -41,14 +41,6 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Market Lookup
       </button>
-      <button class="tab-btn tab-deals" data-view="deals">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        Deal Scanner
-      </button>
-      <button class="tab-btn tab-advisor" data-view="advisor">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.57-3.25 3.92L12 22l-.75-12.08A4.001 4.001 0 0 1 12 2z"/><circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none"/></svg>
-        AI Advisor
-      </button>
     </div>
     <div class="nav-right">
       <!-- Admin tool icon buttons -->
@@ -508,82 +500,6 @@
     </div>
 
 
-    <!-- ── Deal Scanner View ──────────────────────────────────────────── -->
-    <div id="view-deals" class="view">
-      <div class="page-header">
-        <h1 class="page-title">Deal Scanner</h1>
-      </div>
-
-      <div class="deals-search-bar">
-        <div class="market-search-input-wrap">
-          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="deals-query" class="market-search-input" placeholder="Search any item — sneakers, TVs, kitchen stuff..." />
-        </div>
-        <button class="btn-add" id="btn-deals-scan">Scan Deals</button>
-      </div>
-
-      <div id="deals-stats" class="deals-stats" style="display:none">
-        <div class="deals-stat"><span class="deals-stat-val" id="deals-avg-price">—</span><span class="deals-stat-label">Avg Sold</span></div>
-        <div class="deals-stat"><span class="deals-stat-val" id="deals-sold-count">—</span><span class="deals-stat-label">Sold Comps</span></div>
-        <div class="deals-stat"><span class="deals-stat-val" id="deals-active-count">—</span><span class="deals-stat-label">Active Listings</span></div>
-        <div class="deals-stat"><span class="deals-stat-val" id="deals-found-count">—</span><span class="deals-stat-label">Deals Found</span></div>
-      </div>
-
-      <div id="deals-loading" class="deals-loading" style="display:none">
-        <div class="deals-spinner"></div>
-        <p>Scanning eBay sold vs active prices... this takes ~20 seconds</p>
-      </div>
-
-      <div id="deals-idle" class="market-idle">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".25"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        <p>Search any item to find deals priced below market value</p>
-      </div>
-
-      <div id="deals-grid" class="deals-grid" style="display:none"></div>
-
-      <div id="deals-empty" class="market-idle" style="display:none">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".25"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        <p>No deals found — all active listings are at or above market price</p>
-      </div>
-
-      <!-- Webviews for eBay scraping (rendered but clipped so they're invisible) -->
-      <div class="deals-wv-container">
-        <webview id="deals-wv-sold" class="deals-wv" src="about:blank" partition="persist:ebay"></webview>
-        <webview id="deals-wv-active" class="deals-wv" src="about:blank" partition="persist:ebay"></webview>
-      </div>
-    </div>
-
-    <!-- ── AI Advisor View ─────────────────────────────────────────────── -->
-    <div id="view-advisor" class="view">
-      <div class="page-header">
-        <h1 class="page-title">AI Resell Advisor</h1>
-      </div>
-
-      <div id="advisor-no-key" class="market-idle">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".25"><path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.57-3.25 3.92L12 22l-.75-12.08A4.001 4.001 0 0 1 12 2z"/><circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none"/></svg>
-        <p>Add your Claude API key in Settings to use the AI Advisor</p>
-      </div>
-
-      <div id="advisor-chat" class="advisor-chat" style="display:none">
-        <div id="advisor-messages" class="advisor-messages">
-          <div class="advisor-msg advisor-msg-ai">
-            <div class="advisor-msg-content">
-              <strong>Hey! I'm your resell advisor.</strong> Ask me anything about reselling — what items sell fast, where to source them cheap, whether a find is worth flipping, or what categories are trending right now.
-              <div class="advisor-suggestions">
-                <button class="advisor-chip" onclick="askAdvisor('What are the top 10 high-volume items I can resell right now for fast turnover?')">Top items to flip right now</button>
-                <button class="advisor-chip" onclick="askAdvisor('What should I look for at thrift stores and garage sales this weekend?')">Thrift store guide</button>
-                <button class="advisor-chip" onclick="askAdvisor('What kitchen appliances have the best resell margins and sell fast?')">Best kitchen flips</button>
-                <button class="advisor-chip" onclick="askAdvisor('Give me a retail arbitrage strategy for Walmart and Target clearance')">Retail arbitrage tips</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="advisor-input-bar">
-          <input type="text" id="advisor-input" class="advisor-input" placeholder="Ask about what to resell, where to source, pricing..." />
-          <button class="btn-add" id="btn-advisor-send">Send</button>
-        </div>
-      </div>
-    </div>
 
   </main>
 
@@ -795,14 +711,6 @@
         </div>
       </div>
       <div id="settings-api-status" style="margin-top:4px;font-size:12px;font-weight:600;display:none"></div>
-
-      <!-- AI Advisor -->
-      <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">AI Resell Advisor</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Paste your Claude API key to enable the AI Advisor. Get one at console.anthropic.com</div>
-        <input type="password" id="settings-claude-key" class="form-input" placeholder="sk-ant-api03-..." style="width:100%;font-family:monospace;font-size:12px" />
-        <span id="claude-key-status" style="font-size:11px;font-weight:600;margin-top:4px;display:block"></span>
-      </div>
 
       <!-- Cloud Sync -->
       <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
@@ -1209,17 +1117,7 @@
     <div class="modal-body info-modal-body">
 
       <div class="info-section">
-        <div class="info-section-title info-version">v2.3.0 — Latest</div>
-        <ul class="info-list">
-          <li>AI Resell Advisor — powered by Claude, tells you what to sell, where to source, and expected profit</li>
-          <li>Chat interface with quick-start suggestions for top flips, thrift store tips, and arbitrage strategies</li>
-          <li>Deal Scanner — search any item and find eBay listings priced below market value</li>
-          <li>Deal score system comparing active vs sold prices on eBay</li>
-        </ul>
-      </div>
-
-      <div class="info-section">
-        <div class="info-section-title info-version">v2.1.2</div>
+        <div class="info-section-title info-version">v2.1.2 — Latest</div>
         <ul class="info-list">
           <li>Security hardening — external link validation now blocks unsafe protocols</li>
           <li>Credential cleanup — removed leaked secrets from config templates</li>

@@ -1081,6 +1081,18 @@ function bindEvents() {
   $('btn-settings-cancel').addEventListener('click', closeSettingsModal)
   $('btn-settings-save').addEventListener('click', saveSettings)
 
+  // Settings tab switching
+  document.querySelectorAll('.settings-nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.settingsTab
+      document.querySelectorAll('.settings-nav-btn').forEach(b => b.classList.remove('active'))
+      document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'))
+      btn.classList.add('active')
+      const panel = document.querySelector(`[data-settings-panel="${tab}"]`)
+      if (panel) panel.classList.add('active')
+    })
+  })
+
   $('btn-migrate-cloud').addEventListener('click', async () => {
     const uid = ($('settings-supabase-uid')?.value || '').trim()
     if (!uid) { alert('Please enter your Supabase User ID first.'); return }
@@ -1105,6 +1117,36 @@ function bindEvents() {
     }
   })
 
+  $('btn-test-pushover').addEventListener('click', async () => {
+    const userKey = ($('settings-pushover-user')?.value || '').trim()
+    const token = ($('settings-pushover-token')?.value || '').trim()
+    if (!userKey || !token) { alert('Please enter your Pushover User Key and App Token first.'); return }
+    // Save settings first so main process has them
+    const existing = await window.api.getSettings()
+    await window.api.setSettings({
+      ...existing,
+      pushoverUserKey: userKey,
+      pushoverAppToken: token,
+      pushoverSoundRestock: $('settings-pushover-sound-restock')?.value || 'siren',
+      pushoverSoundNew: $('settings-pushover-sound-new')?.value || 'cashregister',
+      pushoverEmergency: $('settings-pushover-emergency')?.checked || false,
+    })
+    const btn = $('btn-test-pushover')
+    btn.disabled = true
+    btn.textContent = 'Sending…'
+    const result = await window.api.pushover.test()
+    btn.disabled = false
+    btn.textContent = 'Send Test Alert'
+    const pStatus = $('pushover-status')
+    if (result && result.status === 1) {
+      pStatus.textContent = '✓ Active — check your phone!'
+      pStatus.style.color = 'var(--green)'
+    } else {
+      pStatus.textContent = '✗ Failed — check your keys'
+      pStatus.style.color = 'var(--red)'
+    }
+  })
+
   $('btn-show-features').addEventListener('click', () => { $('modal-features').style.display = 'flex' })
   $('modal-features-close').addEventListener('click', () => { $('modal-features').style.display = 'none' })
   $('modal-features').addEventListener('click', e => { if (e.target === $('modal-features')) $('modal-features').style.display = 'none' })
@@ -1119,7 +1161,7 @@ function bindEvents() {
   })
 
   $('btn-dashboard').addEventListener('click', () => {
-    window.api.openExternal('https://discord.com/channels/@me')
+    window.api.openExternal('https://resell-tracker.pages.dev/')
   })
   $('btn-open-profile').addEventListener('click', () => { closeSettingsModal(); openProfileModal() })
   $('modal-profile-close').addEventListener('click', closeProfileModal)
@@ -1496,6 +1538,22 @@ async function openSettingsModal() {
     }
   }
 
+  // Pushover settings
+  if ($('settings-pushover-user')) {
+    $('settings-pushover-user').value = settings.pushoverUserKey || ''
+    $('settings-pushover-token').value = settings.pushoverAppToken || ''
+    $('settings-pushover-sound-restock').value = settings.pushoverSoundRestock || 'siren'
+    $('settings-pushover-sound-new').value = settings.pushoverSoundNew || 'cashregister'
+    $('settings-pushover-emergency').checked = settings.pushoverEmergency || false
+    const pStatus = $('pushover-status')
+    if (settings.pushoverUserKey && settings.pushoverAppToken) {
+      pStatus.textContent = '✓ Active'
+      pStatus.style.color = 'var(--green)'
+    } else {
+      pStatus.textContent = 'Not configured'
+      pStatus.style.color = 'var(--text-dim)'
+    }
+  }
 
   $('modal-settings').style.display = 'flex'
 }
@@ -1611,7 +1669,20 @@ function initProfileModal() {
 async function saveSettings() {
   const existing = await window.api.getSettings()
   const uid = ($('settings-supabase-uid')?.value || '').trim()
-  await window.api.setSettings({ ...existing, supabaseUserId: uid || existing.supabaseUserId || '' })
+  const pushoverUser = ($('settings-pushover-user')?.value || '').trim()
+  const pushoverToken = ($('settings-pushover-token')?.value || '').trim()
+  const pushoverSoundRestock = $('settings-pushover-sound-restock')?.value || 'siren'
+  const pushoverSoundNew = $('settings-pushover-sound-new')?.value || 'cashregister'
+  const pushoverEmergency = $('settings-pushover-emergency')?.checked || false
+  await window.api.setSettings({
+    ...existing,
+    supabaseUserId: uid || existing.supabaseUserId || '',
+    pushoverUserKey: pushoverUser || existing.pushoverUserKey || '',
+    pushoverAppToken: pushoverToken || existing.pushoverAppToken || '',
+    pushoverSoundRestock,
+    pushoverSoundNew,
+    pushoverEmergency,
+  })
   closeSettingsModal()
 }
 
@@ -2221,6 +2292,12 @@ function appendFeedMessage(data) {
 
   const contentText = (data.content || '').replace(/https?:\/\/\S+/g, '').trim()
 
+  const jumpUrl = data.jumpUrl && data.guildId ? `discord://-/channels/${data.guildId}/${data.channelId}/${data.id}` : ''
+  if (jumpUrl) {
+    el.style.cursor = 'pointer'
+    el.dataset.jump = jumpUrl
+  }
+
   el.innerHTML = `
     <div class="feed-msg-header">
       <span class="feed-msg-author">${esc(data.author)}</span>
@@ -2233,8 +2310,12 @@ function appendFeedMessage(data) {
     ${linksHtml}`
 
   el.querySelectorAll('[data-ext]').forEach(btn =>
-    btn.addEventListener('click', () => window.api.openExternal(btn.dataset.ext))
+    btn.addEventListener('click', (e) => { e.stopPropagation(); window.api.openExternal(btn.dataset.ext) })
   )
+
+  if (el.dataset.jump) {
+    el.addEventListener('click', () => window.api.openExternal(el.dataset.jump))
+  }
 
   log.insertBefore(el, log.firstChild)
 
@@ -2250,11 +2331,23 @@ async function renderFeedChannelList() {
     list.innerHTML = '<span style="font-size:12px;color:var(--text-dim)">No feed channels yet</span>'
     return
   }
-  list.innerHTML = ids.map(id => `
-    <div class="channel-chip">
-      <span class="channel-chip-id">${esc(id)}</span>
+  let names = {}
+  try { names = await window.api.selfbot.getChannelNames() } catch {}
+  list.innerHTML = ids.map(id => {
+    const info = names[id]
+    const channelName = info?.channel || id
+    const guildName   = info?.guild   || null
+    return `
+    <div class="channel-chip" title="ID: ${esc(id)}">
+      ${guildName
+        ? `<span style="font-size:11px;opacity:.6;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(guildName)}</span>
+           <span style="font-size:11px;opacity:.35">/</span>
+           <span style="font-size:11px;opacity:.55">#</span><span class="channel-chip-id">${esc(channelName)}</span>`
+        : `<span class="channel-chip-id">${esc(id)}</span>`
+      }
       <button class="channel-chip-remove" data-id="${esc(id)}">✕</button>
-    </div>`).join('')
+    </div>`
+  }).join('')
   list.querySelectorAll('.channel-chip-remove').forEach(btn => {
     btn.addEventListener('click', async () => {
       await window.api.selfbot.removeFeedChannel(btn.dataset.id)

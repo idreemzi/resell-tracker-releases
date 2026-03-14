@@ -76,4 +76,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   onProxyTestResult: cb => ipcRenderer.on('proxy:testResult',   (_, d) => cb(d)),
   onNikeBoost:       cb => ipcRenderer.on('monitor:nikeBoost',  (_, d) => cb(d)),
+  pushover: {
+    test: () => ipcRenderer.invoke('pushover:test'),
+  },
 })

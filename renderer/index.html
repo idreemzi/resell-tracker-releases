@@ -686,61 +686,133 @@
 
 <!-- ── Settings Modal ───────────────────────────────────────────────── -->
 <div id="modal-settings" class="modal-overlay" style="display:none">
-  <div class="modal modal-sm">
+  <div class="modal modal-settings-tabbed">
     <div class="modal-header">
       <h2>Settings</h2>
       <button class="modal-close" id="modal-settings-close">✕</button>
     </div>
-    <div class="modal-body">
-
-      <!-- Discord profile card -->
-      <div class="settings-profile-card">
-        <div class="settings-profile-avatar-wrap">
-          <img id="settings-avatar-img" src="" alt="" style="display:none;width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--accent)" />
-          <div id="settings-avatar-initials" style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:22px;font-weight:700;display:flex;align-items:center;justify-content:center;border:3px solid var(--accent)">RT</div>
-        </div>
-        <div id="settings-username" style="font-size:15px;font-weight:700;color:var(--text);margin-top:10px">Loading...</div>
-        <button class="btn-dashboard" id="btn-dashboard">Dashboard</button>
-        <button class="btn-dashboard" id="btn-open-profile" style="margin-top:6px;background:var(--surface2);color:var(--text)">My Profile</button>
-      </div>
-
-      <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Dark / Neon Mode</div>
-            <div style="font-size:12px;color:var(--text-dim);margin-top:3px">Dark background with neon glow accents</div>
-          </div>
-          <div class="toggle-track" id="dark-mode-track">
-            <div class="toggle-thumb"></div>
-          </div>
-        </div>
-      </div>
-      <div id="settings-api-status" style="margin-top:4px;font-size:12px;font-weight:600;display:none"></div>
-
-      <!-- Cloud Sync -->
-      <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Cloud Sync</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Paste your Supabase User ID to sync inventory, sales and packages to the web dashboard.</div>
-        <input type="text" id="settings-supabase-uid" class="form-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="width:100%;margin-bottom:8px;font-family:monospace;font-size:12px" />
-        <div style="display:flex;align-items:center;gap:8px">
-          <button class="btn-add" id="btn-migrate-cloud" style="font-size:12px;padding:7px 14px;background:var(--teal)">Migrate Existing Data →</button>
-          <span id="sync-status" style="font-size:12px;font-weight:600"></span>
-        </div>
-      </div>
-
-      <div style="display:flex;gap:8px;margin-top:16px">
-        <button class="settings-info-btn" id="btn-show-features">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          Features
+    <div class="settings-layout">
+      <!-- Sidebar -->
+      <div class="settings-sidebar">
+        <button class="settings-nav-btn active" data-settings-tab="general">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.73 12.73l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          General
         </button>
-        <button class="settings-info-btn" id="btn-show-whats-new">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-          What's New
+        <button class="settings-nav-btn" data-settings-tab="sync">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m0 0a9 9 0 0 1 9-9m-9 9a9 9 0 0 0 9 9"/></svg>
+          Cloud Sync
         </button>
+        <button class="settings-nav-btn" data-settings-tab="phone">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          Phone Alerts
+        </button>
+        <div style="flex:1"></div>
+        <button class="btn-danger" id="btn-logout" style="font-size:12px;padding:8px 12px;width:100%;margin-top:8px">Sign Out</button>
+      </div>
+
+      <!-- Content panels -->
+      <div class="settings-content">
+
+        <!-- General -->
+        <div class="settings-panel active" data-settings-panel="general">
+          <div class="settings-profile-card">
+            <div class="settings-profile-avatar-wrap">
+              <img id="settings-avatar-img" src="" alt="" style="display:none;width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--accent)" />
+              <div id="settings-avatar-initials" style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:22px;font-weight:700;display:flex;align-items:center;justify-content:center;border:3px solid var(--accent)">RT</div>
+            </div>
+            <div id="settings-username" style="font-size:15px;font-weight:700;color:var(--text);margin-top:10px">Loading...</div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn-dashboard" id="btn-dashboard">Dashboard</button>
+              <button class="btn-dashboard" id="btn-open-profile" style="background:var(--surface2);color:var(--text)">My Profile</button>
+            </div>
+          </div>
+
+          <div style="margin-top:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--text)">Dark / Neon Mode</div>
+                <div style="font-size:12px;color:var(--text-dim);margin-top:3px">Dark background with neon glow accents</div>
+              </div>
+              <div class="toggle-track" id="dark-mode-track">
+                <div class="toggle-thumb"></div>
+              </div>
+            </div>
+          </div>
+          <div id="settings-api-status" style="margin-top:4px;font-size:12px;font-weight:600;display:none"></div>
+
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:20px">
+            <button class="settings-info-btn" id="btn-show-features" style="width:100%;justify-content:center">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              Features
+            </button>
+            <button class="settings-info-btn" id="btn-show-whats-new" style="width:100%;justify-content:center">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              What's New
+            </button>
+          </div>
+        </div>
+
+        <!-- Cloud Sync -->
+        <div class="settings-panel" data-settings-panel="sync">
+          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">Cloud Sync</div>
+          <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px">Paste your Supabase User ID to sync inventory, sales and packages to the web dashboard.</div>
+          <input type="text" id="settings-supabase-uid" class="form-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="width:100%;margin-bottom:10px;font-family:monospace;font-size:12px" />
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn-add" id="btn-migrate-cloud" style="font-size:12px;padding:7px 14px;background:var(--teal)">Migrate Existing Data →</button>
+            <span id="sync-status" style="font-size:12px;font-weight:600"></span>
+          </div>
+        </div>
+
+        <!-- Phone Alerts -->
+        <div class="settings-panel" data-settings-panel="phone">
+          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">Phone Alerts</div>
+          <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px">Get push notifications on your phone for monitor alerts and Discord keyword matches. Download <a href="#" onclick="event.preventDefault();window.api.openExternal('https://pushover.net/clients')" style="color:var(--accent)">Pushover</a> on your phone, then paste your keys below.</div>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input type="text" id="settings-pushover-user" class="form-input" placeholder="User Key" style="flex:1;font-family:monospace;font-size:12px" />
+            <input type="text" id="settings-pushover-token" class="form-input" placeholder="App Token" style="flex:1;font-family:monospace;font-size:12px" />
+          </div>
+          <div style="margin-bottom:12px">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">Alert Sounds</div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap">
+              <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px">Live/Restock:
+                <select id="settings-pushover-sound-restock" class="form-input" style="font-size:12px;padding:5px 10px;width:auto">
+                  <option value="siren">Siren</option>
+                  <option value="cashregister">Cash Register</option>
+                  <option value="spacealarm">Space Alarm</option>
+                  <option value="alien">Alien</option>
+                  <option value="persistent">Persistent</option>
+                  <option value="bugle">Bugle</option>
+                  <option value="incoming">Incoming</option>
+                  <option value="pushover">Default</option>
+                </select>
+              </label>
+              <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px">New Product:
+                <select id="settings-pushover-sound-new" class="form-input" style="font-size:12px;padding:5px 10px;width:auto">
+                  <option value="cashregister">Cash Register</option>
+                  <option value="pushover">Default</option>
+                  <option value="magic">Magic</option>
+                  <option value="cosmic">Cosmic</option>
+                  <option value="climb">Climb</option>
+                  <option value="echo">Echo</option>
+                  <option value="incoming">Incoming</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:8px">
+              <input type="checkbox" id="settings-pushover-emergency" /> Emergency for live drops (bypasses Do Not Disturb)
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn-add" id="btn-test-pushover" style="font-size:12px;padding:7px 14px;background:var(--orange)">Send Test Alert</button>
+            <span id="pushover-status" style="font-size:12px;font-weight:600"></span>
+          </div>
+        </div>
+
       </div>
     </div>
-    <div class="modal-footer" style="justify-content:space-between">
-      <button class="btn-danger" id="btn-logout" style="font-size:13px;padding:8px 16px">Sign Out</button>
+    <div class="modal-footer" style="justify-content:flex-end">
       <div style="display:flex;gap:10px">
         <button class="btn-ghost" id="btn-settings-cancel">Cancel</button>
         <button class="btn-add modal-submit" id="btn-settings-save">Save</button>
@@ -1108,6 +1180,25 @@
           <li>Dead proxy cleanup with one click</li>
         </ul>
       </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Phone Alerts (Pushover)</div>
+        <ul class="info-list">
+          <li>Push notifications on your phone for all monitor alerts, Discord keyword matches, and cook group feed messages</li>
+          <li>Tap notification to open buy/ATC link directly on your phone</li>
+          <li>Custom sounds per alert type (live/restock vs new product)</li>
+          <li>Emergency mode — live drop alerts bypass Do Not Disturb</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">System Tray</div>
+        <ul class="info-list">
+          <li>Minimize or close hides the app to your system tray — keeps running in the background</li>
+          <li>Double-click tray icon to restore, right-click for Quit</li>
+          <li>Monitors, selfbot, and phone alerts all stay active when minimized</li>
+        </ul>
+      </div>
     </div>
   </div>
 </div>
@@ -1122,7 +1213,19 @@
     <div class="modal-body info-modal-body">
 
       <div class="info-section">
-        <div class="info-section-title info-version">v2.5.0 — Latest</div>
+        <div class="info-section-title info-version">v2.6.0 — Latest</div>
+        <ul class="info-list">
+          <li>Phone Alerts — get Pushover push notifications for monitors, keyword matches, and cook group feed messages. Tap to buy directly from your phone</li>
+          <li>Custom alert sounds and Emergency mode (bypasses Do Not Disturb for live drops)</li>
+          <li>Minimize to system tray — app stays running by your clock</li>
+          <li>Jump to message — click any feed message to open it in Discord</li>
+          <li>Feed channels now show server/channel names instead of IDs</li>
+          <li>Settings redesigned with sidebar tabs</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title info-version">v2.5.0</div>
         <ul class="info-list">
           <li>Full UI redesign — refreshed dark mode with glass effects, animated orbs, and indigo glow accents</li>
           <li>Light mode polished — clean grey borders, visible card shadows, cool grey background</li>

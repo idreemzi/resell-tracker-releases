@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, net, session, protocol } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, net, session, protocol, Tray, Menu, nativeImage } = require('electron')
 const path   = require('path')
 const fs     = require('fs')
 const http   = require('http')
@@ -154,6 +154,31 @@ async function createWindow() {
   mainWindow.setMenuBarVisibility(false)
   mainWindow.once('ready-to-show', () => mainWindow.show())
   mainWindowRef = mainWindow
+
+  // System tray
+  const trayIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.ico'))
+  const tray = new Tray(trayIcon.resize({ width: 16, height: 16 }))
+  tray.setToolTip('Resell Tracker')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show', click: () => { mainWindow.show(); mainWindow.focus() } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { app.isQuitting = true; app.quit() } }
+  ]))
+  tray.on('double-click', () => { mainWindow.show(); mainWindow.focus() })
+
+  // Minimize to tray instead of taskbar
+  mainWindow.on('minimize', (e) => {
+    e.preventDefault()
+    mainWindow.hide()
+  })
+
+  // Prevent close from killing app — hide to tray instead
+  mainWindow.on('close', (e) => {
+    if (!app.isQuitting) {
+      e.preventDefault()
+      mainWindow.hide()
+    }
+  })
 
   const authed = await checkAuth()
   if (authed) {
@@ -1004,15 +1029,15 @@ ipcMain.handle('tracking:open', (_, trackingNumber, carrier) => {
 ipcMain.handle('shell:openExternal', (_, url) => {
   try {
     const parsed = new URL(url)
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'discord:') {
       shell.openExternal(url)
     }
   } catch { /* invalid URL, ignore */ }
 })
 
 ipcMain.handle('app:version',      () => app.getVersion())
-ipcMain.handle('window:minimize',  () => mainWindow.minimize())
-ipcMain.handle('window:close',     () => mainWindow.close())
+ipcMain.handle('window:minimize',  () => mainWindow.hide())
+ipcMain.handle('window:close',     () => mainWindow.hide())
 ipcMain.handle('window:flash',     () => { mainWindow.flashFrame(true); mainWindow.once('focus', () => mainWindow.flashFrame(false)) })
 
 ipcMain.handle('tracking:fetchEvents', async (_, trackingNumber, carrier) => {
@@ -1345,9 +1370,9 @@ function startSelfbot() {
   if (!cfg.token) return
   selfbot.start(
     { token: cfg.token, keywords: cfg.keywords || [], channelIds: cfg.channelIds || [], feedChannelIds: cfg.feedChannelIds || [], caseSensitive: cfg.caseSensitive || false },
-    data    => notifyRenderer('discord:keywordAlert', data),
+    data    => { notifyRenderer('discord:keywordAlert', data); sendKeywordPushover(data.keyword, data.channelName || data.channelId, data.preview || data.content || '') },
     running => notifyRenderer('selfbot:statusUpdate', { running }),
-    data    => notifyRenderer('discord:feedMessage',  data)
+    data    => { notifyRenderer('discord:feedMessage', data); sendFeedPushover(data) }
   )
 }
 
@@ -1406,7 +1431,8 @@ ipcMain.handle('selfbot:getChannelNames', async () => {
   try {
     const token = getSelfbotConfig().token
     if (!token) return {}
-    const ids = getSelfbotConfig().channelIds || []
+    const cfg = getSelfbotConfig()
+    const ids = [...new Set([...(cfg.channelIds || []), ...(cfg.feedChannelIds || [])])]
     const result = {}
 
     await Promise.all(ids.map(async id => {
@@ -1483,6 +1509,111 @@ function notifyRenderer(channel, data) {
     mainWindowRef.webContents.send(channel, data)
   }
 }
+
+// ── Pushover Phone Alerts ──────────────────────────────────────────────────────
+async function sendPushover({ title, message, url, urlTitle, priority, sound, imageUrl }) {
+  const s = getSettings()
+  const userKey = s.pushoverUserKey
+  const appToken = s.pushoverAppToken
+  if (!userKey || !appToken) return
+
+  const params = new URLSearchParams()
+  params.append('token', appToken)
+  params.append('user', userKey)
+  params.append('title', title || 'Resell Tracker')
+  params.append('message', message || '')
+  params.append('html', '1')
+  if (url) { params.append('url', url); params.append('url_title', urlTitle || 'Open Link') }
+  if (sound) params.append('sound', sound)
+  if (priority === 2) {
+    params.append('priority', '2')
+    params.append('retry', '30')
+    params.append('expire', '300')
+  } else if (priority != null) {
+    params.append('priority', String(priority))
+  }
+
+  try {
+    const resp = await fetch('https://api.pushover.net/1/messages.json', {
+      method: 'POST',
+      body: params,
+      signal: AbortSignal.timeout(10000)
+    })
+    const json = await resp.json()
+    if (json.status !== 1) console.log('[pushover] error:', json.errors)
+    return json
+  } catch (err) { console.log('[pushover] send failed:', err.message) }
+}
+
+function sendMonitorPushover(alertType, monitorName, productTitle, price, url, sizes) {
+  const s = getSettings()
+  const isLive = alertType === 'restock' || alertType === 'live' || alertType === 'draw'
+  const sound = isLive ? (s.pushoverSoundRestock || 'siren') : (s.pushoverSoundNew || 'cashregister')
+  const emergency = isLive && s.pushoverEmergency
+  const sizeText = sizes && sizes.length ? `\nSizes: ${sizes.map(v => v.title || v.size || v).join(', ')}` : ''
+  const priceText = price ? ` — ${typeof price === 'number' ? '$' + price : price}` : ''
+
+  const typeLabel = { new: 'New Product', restock: 'Restock', live: 'Drop Live', draw: 'Draw Open', price_drop: 'Price Drop', method_change: 'Method Change' }[alertType] || alertType
+
+  sendPushover({
+    title: `${typeLabel}: ${productTitle}`,
+    message: `${monitorName}${priceText}${sizeText}`,
+    url: url || undefined,
+    urlTitle: 'Buy Now',
+    priority: emergency ? 2 : (isLive ? 1 : 0),
+    sound
+  })
+}
+
+function sendKeywordPushover(keyword, channelName, messagePreview) {
+  const s = getSettings()
+  sendPushover({
+    title: `Keyword: "${keyword}"`,
+    message: `${channelName}\n${messagePreview}`,
+    priority: 1,
+    sound: s.pushoverSoundRestock || 'siren'
+  })
+}
+
+function sendFeedPushover(data) {
+  const s = getSettings()
+  const author = data.author || 'Unknown'
+  const channel = data.channel || data.channelId || ''
+  const content = data.content || ''
+  const embedText = (data.embeds || []).map(e => e.title || e.description || '').filter(Boolean).join(' | ')
+  const contentUrls = (content.match(/https?:\/\/[^\s<>]+/g) || [])
+  const allUrls = [...(data.atc_urls || []), ...(data.urls || []), ...contentUrls]
+
+  // ATC link gets priority as the tap action
+  const atcUrl = (data.atc_urls || [])[0]
+  const productUrl = (data.urls || [])[0] || contentUrls[0]
+  const tapUrl = atcUrl || productUrl || undefined
+
+  // Build message with all links visible
+  const parts = [content, embedText].filter(Boolean)
+  if (productUrl && atcUrl) parts.push(`\n<b>Product:</b> ${productUrl}`)
+  if (atcUrl) parts.push(`<b>ATC:</b> ${atcUrl}`)
+  const message = parts.join('\n').slice(0, 1000)
+
+  sendPushover({
+    title: `${author} in ${channel}`,
+    message: message || '(embed/image)',
+    url: tapUrl,
+    urlTitle: atcUrl ? 'Add to Cart' : 'Open Link',
+    priority: 0,
+    sound: s.pushoverSoundNew || 'cashregister'
+  })
+}
+
+ipcMain.handle('pushover:test', async () => {
+  const result = await sendPushover({
+    title: 'Resell Tracker — Test Alert',
+    message: 'Phone alerts are working! You\'ll get notified for restocks, drops, and keyword matches.',
+    priority: 0,
+    sound: getSettings().pushoverSoundRestock || 'siren'
+  })
+  return result
+})
 
 function startLocalMonitors(monitors) {
   for (const m of monitors) {
@@ -1846,6 +1977,7 @@ async function runShopifyMonitor(monitor) {
       if (availableVariants.length > 0) {
         await sendShopifyDiscordPing(monitor, product, baseUrl, 'new', availableVariants)
         notifyRenderer('monitor:alert', { type: 'new', monitorName: monitor.name, product: { title: product.title, handle: product.handle, image: product.images?.[0]?.src }, baseUrl, variants: availableVariants })
+        sendMonitorPushover('new', monitor.name, product.title, product.variants?.[0]?.price, `${baseUrl}/products/${product.handle}`, availableVariants)
       }
       continue
     }
@@ -1873,6 +2005,7 @@ async function runShopifyMonitor(monitor) {
     if (restockedVariants.length > 0) {
       await sendShopifyDiscordPing(monitor, product, baseUrl, 'restock', restockedVariants)
       notifyRenderer('monitor:alert', { type: 'restock', monitorName: monitor.name, product: { title: product.title, handle: product.handle, image: product.images?.[0]?.src }, baseUrl, variants: restockedVariants })
+      sendMonitorPushover('restock', monitor.name, product.title, product.variants?.[0]?.price, `${baseUrl}/products/${product.handle}`, restockedVariants)
     }
     if (priceDropped) {
       await sendShopifyDiscordPing(monitor, product, baseUrl, 'price_drop', [], { oldPrice, newPrice })
@@ -2081,6 +2214,7 @@ async function runFunkoMonitor(monitor) {
       if (product.available) {
         await sendFunkoDiscordPing(monitor, product, 'new')
         notifyRenderer('monitor:alert', { type: 'new', monitorName: monitor.name, product: { title: product.name, image: product.image } })
+        sendMonitorPushover('new', monitor.name, product.name, product.price, product.url)
       }
       continue
     }
@@ -2091,6 +2225,7 @@ async function runFunkoMonitor(monitor) {
     if (product.available && !prev.available) {
       await sendFunkoDiscordPing(monitor, product, 'restock')
       notifyRenderer('monitor:alert', { type: 'restock', monitorName: monitor.name, product: { title: product.name, image: product.image } })
+      sendMonitorPushover('restock', monitor.name, product.name, product.price, product.url)
     }
     if (monitor.price_alert && curr.price != null && prev.price != null && curr.price < prev.price) {
       const threshold = monitor.price_threshold ? parseFloat(monitor.price_threshold) : null
@@ -2289,6 +2424,7 @@ async function runNikeMonitor(monitor) {
       if (!matchesKeywords(p.name)) continue
       if (monitor.webhook_url) await sendNikeDiscordPing(monitor, p, 'new')
       notifyRenderer('monitor:alert', { isNike: true, monitorId: monitor.id, monitorName: monitor.name, type: 'new', title: p.name, variant: p.styleColor, price: p.price, url: p.url, image: p.image, sizes: p.sizes })
+      sendMonitorPushover('new', monitor.name, p.name, p.price, p.url, p.sizes)
     } else {
       const statusChanged = p.status !== prev.status
       const methodChanged = p.method !== prev.method
@@ -2299,11 +2435,13 @@ async function runNikeMonitor(monitor) {
         if (alertType) {
           if (monitor.webhook_url) await sendNikeDiscordPing(monitor, p, alertType)
           notifyRenderer('monitor:alert', { isNike: true, monitorId: monitor.id, monitorName: monitor.name, type: alertType, title: p.name, variant: p.styleColor, price: p.price, url: p.url, image: p.image, sizes: p.sizes })
+          sendMonitorPushover(alertType, monitor.name, p.name, p.price, p.url, p.sizes)
         }
       }
       if (methodChanged && prev.method === 'DAN' && p.method !== 'DAN') {
         if (monitor.webhook_url) await sendNikeDiscordPing(monitor, p, 'method_change')
         notifyRenderer('monitor:alert', { isNike: true, monitorId: monitor.id, monitorName: monitor.name, type: 'method_change', title: p.name, variant: p.styleColor, price: p.price, url: p.url, image: p.image, sizes: p.sizes })
+        sendMonitorPushover('method_change', monitor.name, p.name, p.price, p.url, p.sizes)
       }
     }
   }
@@ -2413,6 +2551,7 @@ async function runLocalMonitor(monitor) {
     console.log(`[local-monitor] RESTOCK: ${monitor.name}`)
     await sendLocalDiscordPing(monitor, result, 'restock', {})
     notifyRenderer('monitor:alert', { type: 'restock', monitorName: monitor.name, product: { title: result.title || monitor.name }, variants: [] })
+    sendMonitorPushover('restock', monitor.name, result.title || monitor.name, result.price, monitor.product_url)
   }
 
   // Price drop

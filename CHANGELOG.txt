@@ -1,6 +1,26 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
+v2.6.0 — 2026-03-14
+--------------------
+ADDED
+  - Phone Alerts (Pushover) — get push notifications on your phone for
+    monitor alerts, Discord keyword matches, and cook group feed messages.
+    Tap the notification to open buy/ATC links directly on your phone.
+  - Custom alert sounds per alert type (live/restock vs new product).
+  - Emergency mode — live drop alerts bypass Do Not Disturb on your phone.
+  - Minimize to system tray — app hides by your clock instead of closing.
+    Double-click the tray icon to bring it back, right-click for Quit.
+  - Jump to message — click any cook group feed message to open it in
+    the Discord desktop app.
+  - Feed channel name resolution — feed channels now show server and
+    channel names instead of raw IDs.
+
+CHANGED
+  - Settings modal redesigned with sidebar navigation tabs (General,
+    Cloud Sync, Phone Alerts) — no more scrolling.
+  - Dashboard button now opens the web dashboard (Cloudflare Pages).
+
 v2.5.0 — 2026-03-13
 --------------------
 CHANGED

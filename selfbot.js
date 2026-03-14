@@ -105,6 +105,7 @@ function start(config, onAlert, onStatusChange, onFeedMessage) {
       onFeedMessage({
         id:        msg.id,
         channelId: chanId,
+        guildId:   msg.guildId || msg.channel?.guildId || '',
         channel:   msg.channel?.name || 'unknown',
         author:    msg.author?.username || 'Unknown',
         content:   content.slice(0, 1000),
@@ -112,6 +113,7 @@ function start(config, onAlert, onStatusChange, onFeedMessage) {
         images,
         urls:      embedUrls,
         atc_urls:  atcUrls,
+        jumpUrl:   msg.url || '',
         timestamp: new Date().toISOString(),
       })
     }

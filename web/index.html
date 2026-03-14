@@ -39,13 +39,67 @@
   <!-- -- Landing hero -- -->
   <div class="landing">
     <div class="landing-hero">
-      <div class="landing-badge">Resell smarter, not harder</div>
-      <h1 class="landing-h1">Track Every Flip.<br><span class="gradient-text">Maximize Profit.</span></h1>
-      <p class="landing-p">The all-in-one dashboard for resellers. Track inventory, log sales, monitor packages, and see your analytics — all in one place.</p>
-      <button class="btn-landing-cta" onclick="document.getElementById('login-section').scrollIntoView({behavior:'smooth'})">
-        Get Started
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
-      </button>
+      <div class="landing-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        100% Free &mdash; No credit card needed
+      </div>
+      <h1 class="landing-h1">Stop Losing Profit<br>in <span class="gradient-text">Messy Spreadsheets.</span></h1>
+      <p class="landing-p">Track every flip, every shipment, and every dollar — without juggling spreadsheets, notes apps, and calculators. Built for resellers who want to know exactly where their money goes.</p>
+      <div class="landing-cta-row">
+        <button class="btn-landing-cta" onclick="document.getElementById('login-section').scrollIntoView({behavior:'smooth'})">
+          Start Tracking Free
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <span class="landing-cta-note">No sign-up hassle — just link Discord</span>
+      </div>
+    </div>
+
+    <!-- -- App screenshot showcase -- -->
+    <div class="landing-preview">
+      <div class="preview-window">
+        <div class="preview-titlebar">
+          <span class="preview-dot" style="background:#ff5f57"></span>
+          <span class="preview-dot" style="background:#febc2e"></span>
+          <span class="preview-dot" style="background:#28c840"></span>
+          <span class="preview-titlebar-text">Resell Tracker — Dashboard</span>
+        </div>
+        <div class="preview-body">
+          <img src="screenshot.png" alt="Resell Tracker dashboard showing inventory, sales, and analytics" class="preview-img" />
+        </div>
+      </div>
+      <div class="preview-glow"></div>
+    </div>
+
+    <!-- -- Why section (pain points) -- -->
+    <div class="landing-why">
+      <h2 class="landing-section-title">Sound familiar?</h2>
+      <div class="landing-why-grid">
+        <div class="landing-why-card why-pain">
+          <span class="why-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </span>
+          <p>"I forgot what I paid for that pair"</p>
+        </div>
+        <div class="landing-why-card why-pain">
+          <span class="why-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </span>
+          <p>"My spreadsheet is 50 tabs and still wrong"</p>
+        </div>
+        <div class="landing-why-card why-pain">
+          <span class="why-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </span>
+          <p>"Did I actually profit this month?"</p>
+        </div>
+        <div class="landing-why-card why-pain">
+          <span class="why-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </span>
+          <p>"I have no idea where half my packages are"</p>
+        </div>
+      </div>
+      <p class="landing-why-answer">Resell Tracker replaces all of that with one clean dashboard.</p>
     </div>
 
     <!-- -- Feature cards -- -->
@@ -55,28 +109,44 @@
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
         </div>
         <h3>Inventory</h3>
-        <p>Keep track of every item you own, its cost, size, and estimated resale value.</p>
+        <p>Every item, cost basis, size, and estimated value in one place. No more guessing.</p>
       </div>
       <div class="landing-feature">
         <div class="landing-feature-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         </div>
         <h3>Sales</h3>
-        <p>Log every sale with platform, fees, and profit calculated automatically.</p>
+        <p>Log sales, auto-calculate fees and profit per platform. Know your real margin.</p>
       </div>
       <div class="landing-feature">
         <div class="landing-feature-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
         </div>
         <h3>Packages</h3>
-        <p>Track shipments across USPS, UPS, FedEx, and more with live status updates.</p>
+        <p>USPS, UPS, FedEx — all your shipments tracked live in one view.</p>
       </div>
       <div class="landing-feature">
         <div class="landing-feature-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         </div>
         <h3>Analytics</h3>
-        <p>See profit trends, ROI, monthly charts, and know exactly how your business is doing.</p>
+        <p>Profit trends, ROI, monthly breakdowns. Finally answer "am I actually making money?"</p>
+      </div>
+    </div>
+
+    <!-- -- Social proof -- -->
+    <div class="landing-social-proof">
+      <div class="social-proof-card">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>Works on desktop, web, and mobile</span>
+      </div>
+      <div class="social-proof-card">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>5+ selling platforms supported</span>
+      </div>
+      <div class="social-proof-card">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>Free forever — no paywalls, no trials</span>
       </div>
     </div>
 
@@ -97,7 +167,8 @@
     </div>
 
     <footer class="landing-footer">
-      <p>Built for resellers, by resellers.</p>
+      <p class="landing-footer-tagline">Built for resellers, by resellers.</p>
+      <p class="landing-footer-sub">Have questions or feedback? Reach out on Discord.</p>
     </footer>
   </div>
 </div>

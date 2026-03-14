@@ -1381,6 +1381,136 @@ function saveSelfbotConfig(discord) {
 const _channelNameCache = new Map()
 const _guildNameCache   = new Map()
 
+// ── Auto-release: parse feed messages into calendar releases ─────────────────
+function parseReleaseFromMessage(data) {
+  const text = data.content || ''
+  if (!text.trim()) return null
+
+  // Strip markdown bold/italic markers for parsing
+  const clean = text.replace(/\*\*/g, '').replace(/\*/g, '')
+
+  // Name: first line, also strip Discord timestamps <t:123:f>
+  const firstLine = clean.split('\n').find(l => l.trim())
+  if (!firstLine) return null
+  const name = firstLine.replace(/<t:\d+:[tTdDfFR]>/g, '').replace(/\s+/g, ' ').trim()
+  if (name.length < 3 || name.length > 200) return null
+
+  // Retail price: "-Retail: $3 each", "Retail: $29.99", "$71 retail"
+  const retailMatch = clean.match(/[-–]?\s*Retail[:\s]*\$?([\d,.]+)/i) || clean.match(/\$([\d,.]+)\s*retail/i)
+  const retailPrice = retailMatch ? retailMatch[1].replace(/,/g, '') : ''
+
+  // Resale / Presale price: "-Resale: $15+", "Resale: $200-250", "Presale: $300", "Resell Prediction: $220"
+  const resaleMatch = clean.match(/[-–]?\s*(?:Resale|Resell|Presale|Resell\s*Prediction)[:\s]*\$?([\d,.]+[\s\-–+/]*[\d,.]*)/i)
+  const resalePrice = resaleMatch ? resaleMatch[1].replace(/,/g, '').trim() : ''
+
+  // Date: first try Discord timestamp <t:UNIX:f> — most accurate
+  let releaseDate = ''
+  let releaseTime = ''
+  const discordTsMatch = text.match(/<t:(\d+):[tTdDfFR]>/)
+  if (discordTsMatch) {
+    const dt = new Date(parseInt(discordTsMatch[1]) * 1000)
+    releaseDate = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+    const h = dt.getUTCHours(), m = dt.getUTCMinutes()
+    if (h !== 0 || m !== 0) {
+      releaseTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+    }
+  }
+
+  // Fallback: "Month Day" or "Mon Day" pattern
+  if (!releaseDate) {
+    const months = ['january','february','march','april','may','june','july','august','september','october','november','december']
+    const monthsShort = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+    const monthNameRe = new RegExp(`(${months.join('|')}|${monthsShort.join('|')})\\.?\\s+(\\d{1,2})(?:[,\\s]+(\\d{2,4}))?`, 'i')
+    const monthNameMatch = clean.match(monthNameRe)
+    if (monthNameMatch) {
+      const mName = monthNameMatch[1].toLowerCase()
+      const mIdx = months.findIndex(m => m.startsWith(mName.slice(0, 3)))
+      const day = parseInt(monthNameMatch[2])
+      const year = monthNameMatch[3] ? (monthNameMatch[3].length === 2 ? 2000 + parseInt(monthNameMatch[3]) : parseInt(monthNameMatch[3])) : new Date().getFullYear()
+      if (mIdx >= 0 && day >= 1 && day <= 31) {
+        releaseDate = `${year}-${String(mIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      }
+    }
+  }
+
+  // Fallback: M/D or M/D/YY pattern
+  if (!releaseDate) {
+    const slashMatch = clean.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/)
+    if (slashMatch) {
+      const m = parseInt(slashMatch[1]), d = parseInt(slashMatch[2])
+      const y = slashMatch[3] ? (slashMatch[3].length === 2 ? 2000 + parseInt(slashMatch[3]) : parseInt(slashMatch[3])) : new Date().getFullYear()
+      if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        releaseDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      }
+    }
+  }
+
+  // If no date found, use today
+  if (!releaseDate) {
+    const now = new Date()
+    releaseDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  }
+
+  // Image: first attachment or embed image
+  const imageUrl = (data.images && data.images[0]) || (data.embeds && data.embeds[0]?.image) || ''
+
+  // Notes: "Things to note:" section, strip markdown and mentions
+  const notesMatch = clean.match(/things?\s+to\s+note[:\s]*([\s\S]*?)(?:\n\n|@everyone|@here|$)/i)
+  const notes = notesMatch ? notesMatch[1].replace(/@everyone|@here/g, '').replace(/<t:\d+:[tTdDfFR]>/g, '').trim().slice(0, 300) : ''
+
+  // Links: collect all URLs — markdown [label](url) and bare URLs
+  const allLinks = []
+  const seen = new Set()
+  // Markdown links first: [Store Name](url)
+  let mdMatch
+  const mdRe = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g
+  while ((mdMatch = mdRe.exec(text)) !== null) {
+    const url = mdMatch[2].replace(/[)>.,]+$/, '')
+    if (!seen.has(url)) { seen.add(url); allLinks.push(url) }
+  }
+  // Bare URLs (skip ones already found in markdown)
+  const bareRe = /https?:\/\/\S+/g
+  let bareMatch
+  const textNoMd = text.replace(/\[[^\]]*\]\([^)]*\)/g, '')
+  while ((bareMatch = bareRe.exec(textNoMd)) !== null) {
+    const url = bareMatch[0].replace(/[)>.,]+$/, '')
+    if (!seen.has(url)) { seen.add(url); allLinks.push(url) }
+  }
+  const link = allLinks.join('\n')
+
+  const result = { name, date: releaseDate, retailPrice, resalePrice, imageUrl, link, notes }
+  if (releaseTime) result.releaseTime = releaseTime
+  return result
+}
+
+async function autoCreateRelease(data) {
+  const cfg = getSelfbotConfig()
+  const autoChannels = cfg.autoReleaseChannelIds || []
+  if (!autoChannels.includes(String(data.channelId))) return
+
+  const parsed = parseReleaseFromMessage(data)
+  if (!parsed) return
+
+  try {
+    const token = getStoredJWT()
+    if (!token) { console.log('[auto-release] No JWT — skipping'); return }
+    const res = await fetch(`${SERVER_URL}/releases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(parsed)
+    })
+    if (res.ok) {
+      const release = await res.json()
+      console.log(`[auto-release] Created: ${parsed.name} on ${parsed.date}`)
+      notifyRenderer('releases:refresh', release)
+    } else {
+      console.error(`[auto-release] Server error: ${res.status}`)
+    }
+  } catch (err) {
+    console.error('[auto-release] Failed:', err.message)
+  }
+}
+
 function startSelfbot() {
   if (selfbot.isRunning()) return
   const cfg = getSelfbotConfig()
@@ -1389,7 +1519,7 @@ function startSelfbot() {
     { token: cfg.token, keywords: cfg.keywords || [], channelIds: cfg.channelIds || [], feedChannelIds: cfg.feedChannelIds || [], caseSensitive: cfg.caseSensitive || false },
     data    => { notifyRenderer('discord:keywordAlert', data); sendKeywordPushover(data.keyword, data.channelName || data.channelId, data.preview || data.content || '') },
     running => notifyRenderer('selfbot:statusUpdate', { running }),
-    data    => { notifyRenderer('discord:feedMessage', data); sendFeedPushover(data) }
+    data    => { notifyRenderer('discord:feedMessage', data); sendFeedPushover(data); autoCreateRelease(data) }
   )
 }
 
@@ -1503,6 +1633,72 @@ ipcMain.handle('selfbot:removeFeedChannel', (_, id) => {
   saveSelfbotConfig({ ...cfg, feedChannelIds: ids })
   restartSelfbot()
   return { ok: true, ids }
+})
+
+ipcMain.handle('selfbot:getAutoReleaseChannels', () => getSelfbotConfig().autoReleaseChannelIds || [])
+ipcMain.handle('selfbot:addAutoReleaseChannel', (_, id) => {
+  const clean = id.toString().trim().replace(/\D/g, '')
+  if (!clean) return { error: 'Invalid ID' }
+  const cfg = getSelfbotConfig()
+  const ids = [...new Set([...(cfg.autoReleaseChannelIds || []), clean])]
+  // Also ensure it's a feed channel (needs to receive all messages)
+  const feedIds = [...new Set([...(cfg.feedChannelIds || []), clean])]
+  saveSelfbotConfig({ ...cfg, autoReleaseChannelIds: ids, feedChannelIds: feedIds })
+  restartSelfbot()
+  return { ok: true, ids }
+})
+ipcMain.handle('selfbot:removeAutoReleaseChannel', (_, id) => {
+  const clean = id.toString().trim()
+  const cfg = getSelfbotConfig()
+  const ids = (cfg.autoReleaseChannelIds || []).filter(i => i !== clean)
+  saveSelfbotConfig({ ...cfg, autoReleaseChannelIds: ids })
+  restartSelfbot()
+  return { ok: true, ids }
+})
+
+ipcMain.handle('selfbot:testAutoRelease', async (_, channelId) => {
+  const cfg = getSelfbotConfig()
+  if (!cfg.token) return { error: 'No selfbot token configured' }
+  try {
+    // Fetch last message from the channel via Discord API
+    const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages?limit=5`, {
+      headers: { Authorization: cfg.token, 'Content-Type': 'application/json' }
+    })
+    if (!res.ok) return { error: `Discord API error: ${res.status}` }
+    const messages = await res.json()
+    // Find first message with actual content (skip empty/system messages)
+    const msg = messages.find(m => m.content && m.content.trim().length > 10)
+    if (!msg) return { error: 'No recent messages with content found' }
+
+    // Build feed-message-like data from API response
+    const images = (msg.attachments || []).filter(a => /\.(png|jpg|jpeg|gif|webp)/i.test(a.url)).map(a => a.url)
+    const embeds = (msg.embeds || []).map(e => ({
+      title: e.title || '', description: e.description || '',
+      image: e.image?.url || e.thumbnail?.url || '', url: e.url || ''
+    }))
+    const fakeData = { channelId, content: msg.content, images, embeds }
+
+    const parsed = parseReleaseFromMessage(fakeData)
+    if (!parsed) return { error: 'Could not parse release from message', raw: msg.content.slice(0, 300) }
+
+    // Actually create the release
+    const token = getStoredJWT()
+    if (!token) return { ok: true, parsed, raw: msg.content.slice(0, 300), warning: 'Parsed OK but no JWT — could not add to calendar' }
+    const createRes = await fetch(`${SERVER_URL}/releases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(parsed)
+    })
+    if (createRes.ok) {
+      const release = await createRes.json()
+      notifyRenderer('releases:refresh', release)
+      return { ok: true, parsed, raw: msg.content.slice(0, 300), created: true }
+    } else {
+      return { ok: true, parsed, raw: msg.content.slice(0, 300), warning: `Parsed OK but server returned ${createRes.status}` }
+    }
+  } catch (err) {
+    return { error: err.message }
+  }
 })
 
 ipcMain.handle('selfbot:status', () => selfbot.isRunning())

@@ -407,6 +407,18 @@
           </div>
 
           <div style="border-top:1px solid var(--border);padding-top:20px">
+            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">Auto-Release Channels</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Messages from these channels are automatically parsed and added to your release calendar. The channel is also added as a feed channel.</div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+              <input id="discord-autorelease-channel-input" class="form-input" style="flex:1;font-size:13px" placeholder="Paste Channel ID" />
+              <button class="btn-add" id="btn-discord-autorelease-channel-add" style="white-space:nowrap">Add</button>
+            </div>
+            <div id="discord-autorelease-channel-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+            <button class="btn-ghost" id="btn-test-autorelease" style="font-size:11px;padding:6px 12px;margin-top:10px">Test Latest Message</button>
+            <div id="autorelease-test-result" style="font-size:12px;margin-top:8px;display:none;padding:10px;border-radius:var(--radius-sm);background:var(--glass2);border:1px solid var(--border);white-space:pre-wrap;max-height:200px;overflow-y:auto"></div>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:20px">
             <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">User Token</div>
             <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Your Discord user token. Stored locally only. Changing this will restart the selfbot.</div>
             <div style="display:flex;gap:8px;align-items:center">
@@ -854,6 +866,7 @@
       <div class="form-row">
         <input type="url"    id="rl-image"  class="form-input grow" placeholder="Image URL (optional)" />
         <input type="number" id="rl-retail" class="form-input w160" placeholder="Retail Price" min="0" step="0.01" />
+        <input type="text"   id="rl-resale" class="form-input w160" placeholder="Resale Price" />
       </div>
       <div class="form-row">
         <input type="time"   id="rl-time"   class="form-input w160" />

@@ -159,7 +159,7 @@ body::after {
 /* -- Login -------------------------------------------------------------------- */
 #screen-login {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   min-height: 100vh;
   overflow-y: auto;
@@ -186,11 +186,11 @@ body::after {
 
 .landing-hero {
   text-align: center;
-  padding: 100px 0 60px;
+  padding: 80px 0 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 18px;
 }
 
 .landing-badge {
@@ -251,12 +251,193 @@ body::after {
 .btn-landing-cta:hover { transform: translateY(-3px); box-shadow: 0 8px 40px var(--accent-glow); }
 .btn-landing-cta:active { transform: translateY(0); }
 
+/* -- App Preview Showcase -- */
+.landing-preview {
+  width: 100%;
+  max-width: 860px;
+  position: relative;
+  padding: 0 0 10px;
+  animation: fadeInUp 0.8s ease 0.35s both;
+}
+
+.preview-window {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border2);
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow-xl), 0 0 80px rgba(99,102,241,0.08);
+  position: relative;
+  z-index: 1;
+}
+
+.preview-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.preview-titlebar-text {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-right: 44px; /* offset for dots centering */
+}
+
+.preview-body {
+  position: relative;
+  background: var(--bg2);
+  line-height: 0;
+  max-height: 420px;
+  overflow: hidden;
+}
+
+.preview-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Fade out bottom edge of screenshot */
+.preview-body::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: linear-gradient(transparent, var(--surface));
+  pointer-events: none;
+}
+
+.preview-glow {
+  position: absolute;
+  bottom: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 70%;
+  height: 120px;
+  background: radial-gradient(ellipse, rgba(99,102,241,0.15) 0%, transparent 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* -- CTA row -- */
+.landing-cta-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: fadeInUp 0.6s ease 0.3s both;
+}
+
+.landing-cta-note {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* -- "Why" / pain points section -- */
+.landing-why {
+  width: 100%;
+  padding: 30px 0 10px;
+  text-align: center;
+  animation: fadeInUp 0.6s ease 0.5s both;
+}
+
+.landing-section-title {
+  font-size: clamp(22px, 3.5vw, 32px);
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 24px;
+  letter-spacing: -0.5px;
+}
+
+.landing-why-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.landing-why-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  background: rgba(244,63,94,0.04);
+  border: 1px solid rgba(244,63,94,0.12);
+  text-align: left;
+}
+
+.landing-why-card .why-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--red-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--red);
+}
+
+.landing-why-card p {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.landing-why-answer {
+  margin-top: 24px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--accent2);
+}
+
+/* -- Social proof -- */
+.landing-social-proof {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 20px 0 40px;
+  animation: fadeInUp 0.6s ease 0.6s both;
+}
+
+.social-proof-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--glass2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
 .landing-features {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
+  gap: 16px;
   width: 100%;
-  padding: 20px 0 80px;
+  padding: 20px 0 40px;
   animation: fadeInUp 0.6s ease 0.4s both;
 }
 
@@ -290,6 +471,11 @@ body::after {
   color: var(--accent);
 }
 
+.landing-feature:nth-child(1) .landing-feature-icon { background: var(--cyan-soft); color: var(--cyan); }
+.landing-feature:nth-child(2) .landing-feature-icon { background: var(--green-soft); color: var(--green); }
+.landing-feature:nth-child(3) .landing-feature-icon { background: var(--orange-soft); color: var(--orange); }
+.landing-feature:nth-child(4) .landing-feature-icon { background: var(--purple-soft); color: var(--purple); }
+
 .landing-feature h3 {
   font-size: 16px;
   font-weight: 700;
@@ -310,11 +496,19 @@ body::after {
 }
 
 .landing-footer {
-  padding: 24px 0 40px;
+  padding: 32px 0 48px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.landing-footer p {
-  font-size: 13px;
+.landing-footer-tagline {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.landing-footer-sub {
+  font-size: 12px;
   color: var(--text-dim);
 }
 
@@ -327,10 +521,13 @@ body::after {
   .landing-hero { padding: 60px 0 40px; }
   .landing-features { grid-template-columns: repeat(2, 1fr); gap: 14px; }
   .landing-p { font-size: 15px; }
+  .landing-why-grid { grid-template-columns: 1fr; max-width: 400px; }
+  .landing-social-proof { gap: 12px; }
 }
 
 @media (max-width: 480px) {
   .landing-features { grid-template-columns: 1fr; }
+  .social-proof-card { font-size: 12px; padding: 8px 14px; }
 }
 
 /* -- Profile / Settings page ------------------------------------------------- */

@@ -1734,7 +1734,8 @@ function renderHome() {
       if (isToday && isRelease) cls += ' cal-day-today cal-day-release'
       else if (isToday)         cls += ' cal-day-today'
       else if (isRelease)       cls += ' cal-day-release'
-      html += `<div class="${cls}">${day}</div>`
+      if (isRelease) cls += ' cal-day-clickable'
+      html += `<div class="${cls}" ${isRelease ? `data-date="${dateStr}"` : ''}>${day}</div>`
       day++
     } else {
       html += `<div class="cal-day cal-day-other">${nextDay++}</div>`
@@ -1742,52 +1743,139 @@ function renderHome() {
   }
   $('home-cal-grid').innerHTML = html
 
-  // Today heading
-  $('home-today-title').textContent = `${MONTH_NAMES[tm]} ${td}${ordinal(td)}, ${ty}`
-
-  // Upcoming releases (sorted by date, past releases shown at the bottom)
-  const sorted = [...releases].sort((a, b) => (a.date || '') < (b.date || '') ? -1 : 1)
+  // Selected date for right panel (default to today)
+  if (!window._selectedReleaseDate) window._selectedReleaseDate = todayStr
 
   $('home-release-count').textContent = releases.length ? `${releases.length} Release${releases.length > 1 ? 's' : ''}` : ''
 
-  const list = $('home-releases-list')
-  if (!sorted.length) {
-    list.innerHTML = '<div class="home-upcoming-empty">No releases yet — add one above</div>'
-  } else {
-    list.innerHTML = sorted.map(r => {
-      const isToday = r.date === todayStr
-      const isPast  = r.date && r.date < todayStr
-      const dateObj = r.date ? new Date(r.date + 'T12:00:00') : null
-      const dateLabel = isToday ? 'Today' :
-        dateObj ? dateObj.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+  renderReleasesForDate(window._selectedReleaseDate)
 
-      const imgHtml = r.imageUrl
-        ? `<img class="home-release-img" src="${esc(r.imageUrl)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="home-release-img-placeholder" style="display:none">👟</div>`
-        : `<div class="home-release-img-placeholder">👟</div>`
+  // Click handler for calendar release days
+  $('home-cal-grid').querySelectorAll('.cal-day-clickable').forEach(el => {
+    el.style.cursor = 'pointer'
+    el.addEventListener('click', () => {
+      window._selectedReleaseDate = el.dataset.date
+      // Update active state on calendar
+      $('home-cal-grid').querySelectorAll('.cal-day-selected').forEach(d => d.classList.remove('cal-day-selected'))
+      el.classList.add('cal-day-selected')
+      renderReleasesForDate(el.dataset.date)
+    })
+  })
 
-      const localTimeDisplay = utcTimeToLocalDisplay(r.date, r.releaseTime)
-
-      return `<div class="home-release-card${isPast ? ' release-past' : ''}" data-id="${esc(r.id)}">
-        ${imgHtml}
-        <div class="home-release-info">
-          <div class="home-release-name">${esc(r.name)}</div>
-          <div class="home-release-meta">
-            <span class="home-release-date${isToday ? ' today' : ''}">${dateLabel}</span>
-            ${localTimeDisplay ? `<span class="home-release-time">⏰ ${localTimeDisplay}</span>` : ''}
-            ${r.retailPrice ? `<span class="home-release-price">Retail: $${parseFloat(r.retailPrice).toFixed(2)}</span>` : ''}
-          </div>
-          ${r.notes ? `<div class="home-release-notes">${esc(r.notes)}</div>` : ''}
-          ${r.link ? `<a class="home-release-link btn-release-link" data-url="${esc(r.link)}" title="${esc(r.link)}">🔗 Buy / Release Page</a>` : ''}
-        </div>
-        <div class="home-release-actions">
-          <button class="btn-row btn-edit-release" title="Edit" style="pointer-events:auto">${EDIT_ICON}</button>
-          <button class="btn-row danger btn-del-release" title="Delete" style="pointer-events:auto">${DEL_ICON}</button>
-        </div>
-      </div>`
-    }).join('')
-  }
+  // Highlight currently selected date
+  const selectedEl = $('home-cal-grid').querySelector(`.cal-day-clickable[data-date="${window._selectedReleaseDate}"]`)
+  if (selectedEl) selectedEl.classList.add('cal-day-selected')
 
   renderPinnedMessages()
+}
+
+function renderReleasesForDate(dateStr) {
+  const dateObj = dateStr ? new Date(dateStr + 'T12:00:00') : new Date()
+  const heading = dateObj.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  $('home-today-title').textContent = heading
+
+  const dayReleases = releases.filter(r => r.date === dateStr)
+  const list = $('home-releases-list')
+
+  if (!dayReleases.length) {
+    list.innerHTML = '<div class="home-upcoming-empty">No releases on this date</div>'
+    return
+  }
+
+  list.innerHTML = dayReleases.map(r => {
+    const imgHtml = r.imageUrl
+      ? `<img class="release-compact-img" src="${esc(r.imageUrl)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="release-compact-img-placeholder" style="display:none">👟</div>`
+      : `<div class="release-compact-img-placeholder">👟</div>`
+
+    const localTimeDisplay = utcTimeToLocalDisplay(r.date, r.releaseTime)
+
+    const linksHtml = r.link ? r.link.split('\n').filter(u => u.trim()).map(u => {
+      let hostname
+      try { hostname = new URL(u.trim()).hostname.replace('www.', '') } catch { hostname = 'Link' }
+      const label = hostname.split('.')[0].charAt(0).toUpperCase() + hostname.split('.')[0].slice(1)
+      return `<div class="site-list-item">
+        <div class="site-list-label">${esc(label)}</div>
+        <div class="site-list-url-row">
+          <div class="site-list-url">${esc(u.trim())}</div>
+          <button class="site-list-copy" data-url="${esc(u.trim())}" title="Copy URL">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+          <button class="site-list-open btn-release-link" data-url="${esc(u.trim())}" title="Open in browser">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+      </div>`
+    }).join('') : ''
+
+    return `<div class="release-compact-item" data-id="${esc(r.id)}">
+      <div class="release-compact-header">
+        ${imgHtml}
+        <span class="release-compact-name">${esc(r.name)}</span>
+        <svg class="release-compact-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="release-compact-details">
+        ${r.link ? `<button class="btn-site-list">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          Site List
+        </button>` : ''}
+        <div class="release-detail-row">
+          ${localTimeDisplay ? `<span class="release-detail-tag">⏰ ${localTimeDisplay}</span>` : ''}
+          ${r.retailPrice ? `<span class="release-detail-tag">💰 Retail: $${parseFloat(r.retailPrice).toFixed(2)}</span>` : ''}
+          ${r.resalePrice ? `<span class="release-detail-tag resale-tag">📈 Resale: $${esc(r.resalePrice)}</span>` : ''}
+        </div>
+        ${r.notes ? `<div class="release-detail-notes">${esc(r.notes)}</div>` : ''}
+        <div class="release-detail-actions">
+          <button class="btn-row btn-edit-release" title="Edit">${EDIT_ICON}</button>
+          <button class="btn-row danger btn-del-release" title="Delete">${DEL_ICON}</button>
+        </div>
+      </div>
+      <div class="release-site-list-view">
+        <button class="btn-site-list-back">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
+        ${linksHtml}
+      </div>
+    </div>`
+  }).join('')
+
+  // Accordion: click header to toggle details
+  list.querySelectorAll('.release-compact-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const item = header.closest('.release-compact-item')
+      item.classList.toggle('expanded')
+    })
+  })
+
+  // Site List: swap to links view
+  list.querySelectorAll('.btn-site-list').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation()
+      const item = btn.closest('.release-compact-item')
+      item.classList.add('show-sites')
+    })
+  })
+
+  // Back: swap back to info view
+  list.querySelectorAll('.btn-site-list-back').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation()
+      const item = btn.closest('.release-compact-item')
+      item.classList.remove('show-sites')
+    })
+  })
+
+  // Copy URL buttons
+  list.querySelectorAll('.site-list-copy').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation()
+      navigator.clipboard.writeText(btn.dataset.url)
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
+      setTimeout(() => {
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+      }, 1500)
+    })
+  })
 }
 
 function initHome() {
@@ -1840,6 +1928,7 @@ function openReleaseModal(release = null) {
   $('rl-date').value   = release?.date        || today()
   $('rl-image').value  = release?.imageUrl    || ''
   $('rl-retail').value = release?.retailPrice || ''
+  $('rl-resale').value = release?.resalePrice || ''
   $('rl-time').value   = release?.releaseTime ? utcTimeToLocalInput(release.date, release.releaseTime) : ''
   $('rl-link').value   = release?.link        || ''
   $('rl-notes').value  = release?.notes       || ''
@@ -1864,6 +1953,7 @@ async function saveRelease() {
     date,
     imageUrl:    $('rl-image').value.trim()  || null,
     retailPrice: $('rl-retail').value        || null,
+    resalePrice: $('rl-resale').value.trim() || null,
     releaseTime: localTimeToUtc(date, localTime),
     link:        $('rl-link').value.trim()   || null,
     notes:       $('rl-notes').value.trim()  || null
@@ -2356,8 +2446,50 @@ async function renderFeedChannelList() {
   })
 }
 
+async function renderAutoReleaseChannelList() {
+  const list = $('discord-autorelease-channel-list')
+  if (!list) return
+  const ids = await window.api.selfbot.getAutoReleaseChannels()
+  if (!ids || ids.length === 0) {
+    list.innerHTML = '<span style="font-size:12px;color:var(--text-dim)">No auto-release channels yet</span>'
+    return
+  }
+  let names = {}
+  try { names = await window.api.selfbot.getChannelNames() } catch {}
+  list.innerHTML = ids.map(id => {
+    const info = names[id]
+    const channelName = info?.channel || id
+    const guildName   = info?.guild   || null
+    return `
+    <div class="channel-chip" title="ID: ${esc(id)}">
+      ${guildName
+        ? `<span style="font-size:11px;opacity:.6;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(guildName)}</span>
+           <span style="font-size:11px;opacity:.35">/</span>
+           <span style="font-size:11px;opacity:.55">#</span><span class="channel-chip-id">${esc(channelName)}</span>`
+        : `<span class="channel-chip-id">${esc(id)}</span>`
+      }
+      <button class="channel-chip-remove" data-id="${esc(id)}">✕</button>
+    </div>`
+  }).join('')
+  list.querySelectorAll('.channel-chip-remove').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await window.api.selfbot.removeAutoReleaseChannel(btn.dataset.id)
+      renderAutoReleaseChannelList()
+    })
+  })
+}
+
 function initDiscordFeed() {
   window.api.onDiscordFeed(data => appendFeedMessage(data))
+
+  // Auto-refresh releases when one is auto-created from a feed message
+  window.api.onReleasesRefresh(async () => {
+    try {
+      releases = await window.api.releases.getAll()
+      releases = Array.isArray(releases) ? releases : []
+      if (currentView === 'home') renderHome()
+    } catch {}
+  })
 
   $('btn-feed-clear').addEventListener('click', () => {
     const log = $('discord-feed-log')
@@ -2377,10 +2509,51 @@ function initDiscordFeed() {
     addInput.addEventListener('keydown', e => { if (e.key === 'Enter') addBtn.click() })
   }
 
-  // Load feed channel list whenever settings modal opens
+  // Auto-release channel add
+  const arAddBtn   = $('btn-discord-autorelease-channel-add')
+  const arAddInput = $('discord-autorelease-channel-input')
+  if (arAddBtn && arAddInput) {
+    arAddBtn.addEventListener('click', async () => {
+      const id = arAddInput.value.trim()
+      if (!id) return
+      await window.api.selfbot.addAutoReleaseChannel(id)
+      arAddInput.value = ''
+      renderAutoReleaseChannelList()
+      renderFeedChannelList() // also updates feed list since channel gets added there too
+    })
+    arAddInput.addEventListener('keydown', e => { if (e.key === 'Enter') arAddBtn.click() })
+  }
+
+  const testBtn = $('btn-test-autorelease')
+  if (testBtn) {
+    testBtn.addEventListener('click', async () => {
+      const resultDiv = $('autorelease-test-result')
+      resultDiv.style.display = 'block'
+      resultDiv.textContent = 'Fetching latest message...'
+      resultDiv.style.color = 'var(--text-muted)'
+      const ids = await window.api.selfbot.getAutoReleaseChannels()
+      if (!ids || ids.length === 0) {
+        resultDiv.textContent = 'No auto-release channels configured. Add one first.'
+        resultDiv.style.color = 'var(--red)'
+        return
+      }
+      const res = await window.api.selfbot.testAutoRelease(ids[0])
+      if (res.error) {
+        resultDiv.style.color = 'var(--red)'
+        resultDiv.textContent = `Error: ${res.error}${res.raw ? '\n\nRaw message:\n' + res.raw : ''}`
+      } else {
+        resultDiv.style.color = 'var(--green)'
+        const p = res.parsed
+        const status = res.created ? 'Added to calendar!' : (res.warning || 'Parsed only')
+        resultDiv.textContent = `${status}\n\nName: ${p.name}\nDate: ${p.date}${p.releaseTime ? '\nTime: ' + p.releaseTime + ' UTC' : ''}\nRetail: ${p.retailPrice ? '$' + p.retailPrice : '—'}\nResale: ${p.resalePrice ? '$' + p.resalePrice : '—'}\nImage: ${p.imageUrl ? 'Yes' : 'No'}\nLink: ${p.link || '—'}\nNotes: ${p.notes || '—'}`
+      }
+    })
+  }
+
+  // Load channel lists whenever settings modal opens
   const settingsBtn = $('btn-discord-settings')
   if (settingsBtn) {
-    settingsBtn.addEventListener('click', () => renderFeedChannelList(), { capture: true })
+    settingsBtn.addEventListener('click', () => { renderFeedChannelList(); renderAutoReleaseChannelList() }, { capture: true })
   }
 }
 

@@ -106,6 +106,7 @@ function start(config, onAlert, onStatusChange, onFeedMessage) {
         id:        msg.id,
         channelId: chanId,
         guildId:   msg.guildId || msg.channel?.guildId || '',
+        guild:     msg.guild?.name || '',
         channel:   msg.channel?.name || 'unknown',
         author:    msg.author?.username || 'Unknown',
         content:   content.slice(0, 1000),

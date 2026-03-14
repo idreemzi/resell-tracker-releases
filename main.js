@@ -1578,7 +1578,8 @@ function sendKeywordPushover(keyword, channelName, messagePreview) {
 function sendFeedPushover(data) {
   const s = getSettings()
   const author = data.author || 'Unknown'
-  const channel = data.channel || data.channelId || ''
+  const guild = data.guild || ''
+  const channel = guild ? `${guild} / #${data.channel || data.channelId}` : (data.channel || data.channelId || '')
   const content = data.content || ''
   const embedText = (data.embeds || []).map(e => e.title || e.description || '').filter(Boolean).join(' | ')
   const contentUrls = (content.match(/https?:\/\/[^\s<>]+/g) || [])

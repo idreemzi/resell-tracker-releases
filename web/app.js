@@ -2,6 +2,7 @@
 const SUPABASE_URL      = 'https://lpfoqbmtsxfylkmapxfj.supabase.co'
 const SUPABASE_ANON_KEY = 'sb_publishable_uqGOOWhBan8ZI4knzZvaVw_OKFiAMRP'
 const PHOTO_BUCKET      = 'inventory-photos'
+const RELEASES_SERVER   = 'https://welcoming-abundance-production-dd13.up.railway.app'
 
 // -- Supabase ------------------------------------------------------------------
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -22,6 +23,10 @@ let chartHomeMini  = null
 let adminViewUserId = null
 let approvalPoller  = null
 let _saving         = false  // prevent double-submit
+let releases        = []
+let relCalMonth     = new Date().getMonth()
+let relCalYear      = new Date().getFullYear()
+let relSelectedDate = null
 
 // -- Platform colors -----------------------------------------------------------
 const PLATFORM_META = {
@@ -331,7 +336,7 @@ async function bootApp() {
   if (currentProfile.is_admin) {
     document.getElementById('nav-admin').style.display = 'flex'
   }
-  await loadAllData()
+  await Promise.all([loadAllData(), loadReleases()])
   showScreen('screen-app')
   switchView('home')
   startClock()
@@ -351,6 +356,162 @@ function buildAvatarUrl(discordId, avatarHash) {
   if (!discordId || !avatarHash) return 'https://cdn.discordapp.com/embed/avatars/0.png'
   if (avatarHash.startsWith('http')) return avatarHash
   return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=64`
+}
+
+// -- Releases ------------------------------------------------------------------
+async function loadReleases() {
+  try {
+    const res = await fetch(`${RELEASES_SERVER}/releases`)
+    if (res.ok) releases = await res.json()
+  } catch {}
+}
+
+function renderReleases() {
+  const countEl = document.getElementById('web-releases-count')
+  if (countEl) countEl.textContent = releases.length
+
+  // --- Calendar ---
+  const grid = document.getElementById('web-cal-grid')
+  const monthLabel = document.getElementById('web-cal-month')
+  if (!grid || !monthLabel) return
+
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
+
+  monthLabel.textContent = new Date(relCalYear, relCalMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+  const firstDay = new Date(relCalYear, relCalMonth, 1).getDay()
+  const daysInMonth = new Date(relCalYear, relCalMonth + 1, 0).getDate()
+
+  // Set of dates with releases this month
+  const relDates = new Set()
+  releases.forEach(r => {
+    if (r.date) relDates.add(r.date)
+  })
+
+  let cells = ''
+  for (let i = 0; i < firstDay; i++) cells += '<div class="web-cal-day web-cal-day-empty"></div>'
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${relCalYear}-${String(relCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    const isToday = dateStr === todayStr
+    const hasRelease = relDates.has(dateStr)
+    const isSelected = dateStr === relSelectedDate
+    let cls = 'web-cal-day'
+    if (isToday) cls += ' web-cal-day-today'
+    if (hasRelease) cls += ' web-cal-day-release'
+    if (isSelected) cls += ' web-cal-day-selected'
+    const clickable = hasRelease ? ` onclick="selectRelDate('${dateStr}')"` : ''
+    cells += `<div class="${cls}"${clickable}>${d}</div>`
+  }
+  grid.innerHTML = cells
+
+  // --- Release Cards ---
+  const list = document.getElementById('web-releases-list')
+  const dateHeading = document.getElementById('web-releases-date')
+  if (!list || !dateHeading) return
+
+  if (!relSelectedDate) {
+    // Default: show next upcoming or today
+    const upcoming = releases
+      .filter(r => r.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date))
+    if (upcoming.length) {
+      relSelectedDate = upcoming[0].date
+      // Re-highlight
+      renderReleases()
+      return
+    }
+  }
+
+  const filtered = relSelectedDate ? releases.filter(r => r.date === relSelectedDate) : []
+  if (relSelectedDate) {
+    const d = new Date(relSelectedDate + 'T12:00:00')
+    dateHeading.textContent = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  } else {
+    dateHeading.textContent = 'Select a date'
+  }
+
+  if (!filtered.length) {
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:12px">No releases for this date.</div>'
+    return
+  }
+
+  list.innerHTML = filtered.map((r, i) => {
+    const timeLocal = r.releaseTime ? convertUTCTimeToLocal(r.releaseTime, r.date) : ''
+    const links = (r.link || '').split('\n').filter(Boolean)
+    const linksHtml = links.map(l => {
+      const isPresale = l.startsWith('[PRESALE] ')
+      const url = isPresale ? l.replace('[PRESALE] ', '') : l
+      let domain = ''
+      try { domain = new URL(url).hostname.replace('www.', '') } catch { domain = url }
+      return `<div class="web-release-link-row">
+        ${isPresale ? '<span class="web-presale-badge">PRESALE</span>' : ''}
+        <a href="#" onclick="event.preventDefault();window.open('${esc(url)}','_blank')" class="web-release-link">${esc(domain)}</a>
+      </div>`
+    }).join('')
+
+    return `<div class="web-release-compact-item" id="web-rel-${i}">
+      <div class="web-release-compact-header" onclick="toggleRelAccordion(${i})">
+        <img class="web-release-compact-img" src="${esc(r.imageUrl || '')}" alt="" onerror="this.style.display='none'" />
+        <div class="web-release-compact-name">${esc(r.name)}</div>
+        <svg class="web-rel-chevron" viewBox="0 0 24 24" width="16" height="16"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div class="web-release-compact-details" id="web-rel-details-${i}">
+        <div class="web-rel-info-grid">
+          ${timeLocal ? `<div class="web-rel-info-item"><span class="web-rel-info-label">Time</span><span>${esc(timeLocal)}</span></div>` : ''}
+          ${r.retailPrice ? `<div class="web-rel-info-item"><span class="web-rel-info-label">Retail</span><span>$${esc(r.retailPrice)}</span></div>` : ''}
+          ${r.resalePrice ? `<div class="web-rel-info-item"><span class="web-rel-info-label">Resale</span><span>$${esc(r.resalePrice)}</span></div>` : ''}
+        </div>
+        ${r.notes ? `<div class="web-rel-notes">${esc(r.notes)}</div>` : ''}
+        ${links.length ? `<button class="web-rel-sites-btn" onclick="event.stopPropagation();toggleRelSites(${i})">Site List</button>
+          <div class="web-rel-sites-panel" id="web-rel-sites-${i}">${linksHtml}</div>` : ''}
+      </div>
+    </div>`
+  }).join('')
+}
+
+function convertUTCTimeToLocal(timeStr, dateStr) {
+  try {
+    const [h, m] = timeStr.split(':').map(Number)
+    const d = new Date(dateStr + 'T00:00:00Z')
+    d.setUTCHours(h, m || 0)
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  } catch { return timeStr }
+}
+
+function selectRelDate(dateStr) {
+  relSelectedDate = dateStr
+  // Jump calendar to that month if needed
+  const d = new Date(dateStr + 'T12:00:00')
+  relCalMonth = d.getMonth()
+  relCalYear = d.getFullYear()
+  renderReleases()
+}
+
+function relCalPrev() {
+  relCalMonth--
+  if (relCalMonth < 0) { relCalMonth = 11; relCalYear-- }
+  renderReleases()
+}
+
+function relCalNext() {
+  relCalMonth++
+  if (relCalMonth > 11) { relCalMonth = 0; relCalYear++ }
+  renderReleases()
+}
+
+function toggleRelAccordion(i) {
+  const el = document.getElementById(`web-rel-details-${i}`)
+  if (!el) return
+  el.classList.toggle('web-rel-expanded')
+  const item = document.getElementById(`web-rel-${i}`)
+  if (item) item.classList.toggle('web-rel-open')
+}
+
+function toggleRelSites(i) {
+  const el = document.getElementById(`web-rel-sites-${i}`)
+  if (!el) return
+  el.classList.toggle('web-rel-sites-visible')
 }
 
 // -- Data Loading --------------------------------------------------------------
@@ -398,7 +559,8 @@ function switchView(name) {
     n.classList.toggle('active', n.dataset.view === name)
   })
 
-  if      (name === 'home')      renderHome()
+  if      (name === 'drops')     renderReleases()
+  else if (name === 'home')      renderHome()
   else if (name === 'inventory') renderInventory()
   else if (name === 'sales')     renderSales()
   else if (name === 'packages')  renderPackages()

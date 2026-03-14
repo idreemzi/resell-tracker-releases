@@ -2489,7 +2489,8 @@ ipcMain.handle('auth:loadMain', () => {
 
 // ── Market Lookup ──────────────────────────────────────────────────────────────
 const EBAY_EXTRACT = `(function(){
-  var items = Array.from(document.querySelectorAll('.s-item'));
+  var items = Array.from(document.querySelectorAll('ul.srp-results > li.s-card'));
+  if (!items.length) items = Array.from(document.querySelectorAll('.s-item'));
   var out = [];
   for(var i=0; i<items.length && out.length<20; i++){
     var el = items[i];
@@ -2497,13 +2498,27 @@ const EBAY_EXTRACT = `(function(){
     var priceEl = el.querySelector('.s-item__price');
     var imgEl   = el.querySelector('img');
     var linkEl  = el.querySelector('a.s-item__link') || el.querySelector('a[href*="/itm/"]');
-    if(!titleEl || !priceEl) continue;
-    var t = (titleEl.innerText||titleEl.textContent).replace(/^New listing\\s*/i,'').trim();
-    if(!t || t==='Shop on eBay') continue;
+    if (!titleEl || !priceEl) {
+      // s-card layout: find title/price from spans
+      var spans = Array.from(el.querySelectorAll('span')).map(function(s){ return s.innerText.trim(); });
+      var t = '', p = '';
+      for(var j=0;j<spans.length;j++){
+        if(!t && spans[j].length>15 && !/^\\d/.test(spans[j]) && spans[j]!=='Opens in a new window or tab' && !/product rating/.test(spans[j])){
+          t = spans[j].replace(/^NEW LISTING\\s*/i,'').trim(); }
+        if(!p && spans[j].charAt(0)==='$'){ p = spans[j]; }
+      }
+      if(!t || !p) continue;
+      linkEl = el.querySelector('a[href*="/itm/"]');
+      imgEl = el.querySelector('img[src*="ebayimg.com"]');
+      out.push({ title:t, price:p, priceNum:parseFloat(p.replace(/[^0-9.]/g,''))||0, image:imgEl?imgEl.src:'', url:linkEl?linkEl.href:'' });
+      continue;
+    }
+    var t2 = (titleEl.innerText||titleEl.textContent).replace(/^New listing\\s*/i,'').trim();
+    if(!t2 || t2==='Shop on eBay') continue;
     var imgSrc = imgEl ? (imgEl.src||imgEl.getAttribute('data-src')||'') : '';
-    // skip placeholder 1px images
     if(imgSrc.includes('s-l140') || imgSrc.length < 10) imgSrc = '';
-    out.push({ title:t, price:(priceEl.innerText||priceEl.textContent).trim(), image:imgSrc, url:linkEl?linkEl.href:'' });
+    var priceText = (priceEl.innerText||priceEl.textContent).trim();
+    out.push({ title:t2, price:priceText, priceNum:parseFloat(priceText.replace(/[^0-9.]/g,''))||0, image:imgSrc, url:linkEl?linkEl.href:'' });
   }
   return out;
 })()`
@@ -2613,4 +2628,3 @@ async function fetchEbay(query, sold) {
     win.loadURL(url)
   })
 }
-

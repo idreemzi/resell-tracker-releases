@@ -13,6 +13,13 @@
 </head>
 <body>
 
+<!-- Background orbs (dark mode only) -->
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
 <div class="app">
 
   <!-- ── Top Nav ─────────────────────────────────────────────────────── -->
@@ -498,8 +505,6 @@
 
       <webview id="market-webview" style="display:none;width:100%;flex:1;min-height:600px;border-radius:10px;overflow:hidden" src="about:blank"></webview>
     </div>
-
-
 
   </main>
 
@@ -1117,7 +1122,16 @@
     <div class="modal-body info-modal-body">
 
       <div class="info-section">
-        <div class="info-section-title info-version">v2.1.2 — Latest</div>
+        <div class="info-section-title info-version">v2.5.0 — Latest</div>
+        <ul class="info-list">
+          <li>Full UI redesign — refreshed dark mode with glass effects, animated orbs, and indigo glow accents</li>
+          <li>Light mode polished — clean grey borders, visible card shadows, cool grey background</li>
+          <li>Inter font, gradient buttons, hover animations, and smooth tab transitions</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title info-version">v2.3.1</div>
         <ul class="info-list">
           <li>Security hardening — external link validation now blocks unsafe protocols</li>
           <li>Credential cleanup — removed leaked secrets from config templates</li>

@@ -1,0 +1,223 @@
+RESELL TRACKER — COMPLETE FEATURE LIST
+=======================================
+
+TABS
+----
+
+1. HOME (default)
+   - Full interactive release calendar with month navigation
+   - Calendar highlights: orange = today, blue = release dates
+   - Left accent panel with current day number, day name
+   - Release cards: image, name, date, retail price, release time
+     (auto-converted to user's local timezone), notes, buy link
+   - Live countdown timers: "Drops in 2d 3h", "Live Now", "Draw Open"
+   - Hype detection for Nike collabs (Travis Scott, Off-White, Fragment, etc.)
+   - Pinned Messages section — admin can pin announcements for all users
+   - Admin: "+ Release" and "+ Message" buttons
+
+2. SALES
+   - Sales table: Platform (logo), Product, Buy Price, Sell Price,
+     Fees, Profit, Date, Actions
+   - Platform logos for 19+ platforms (eBay, StockX, GOAT, Depop,
+     Poshmark, Mercari, FB Marketplace, Amazon, Grailed, etc.)
+   - Fallback colored chip badges if logo fails
+   - Stat cards: Total Spent, Total Revenue, Total Profit
+   - Monthly bar chart (Spent / Revenue / Profit) with year navigation
+   - Chart legend toggles — click to show/hide series
+   - Search bar
+   - Scrollable table with sticky header
+   - Add / Edit / Delete Sale modals
+   - Live profit preview in modals
+
+3. INVENTORY
+   - Inventory table: Photo, Product, Qty, Store, Buy Price,
+     Est. Resell, Est. Profit, Actions
+   - Photo support: pick local file or paste image URL
+   - Photo lightbox — click thumbnail to view full size
+   - Search bar
+   - Add / Edit / Delete Product modals
+   - Mark as Sold — sell inventory items into sales log with
+     partial quantity support (sell X of Y units)
+   - Live profit preview
+
+4. PACKAGES
+   - Package tracking cards with 5-stage pipeline:
+     Ordered > Awaiting Pickup > In Transit > Out for Delivery > Delivered
+   - Exception status with error styling
+   - Latest event: description, location, timestamp
+   - Expandable event history (show/hide older events)
+   - Expected delivery date badge
+   - Carrier badge (USPS, UPS, FedEx, DHL, LaserShip, OnTrac, Amazon)
+   - Carrier auto-detection from tracking number format
+   - Tracking number display + nickname support
+   - Search bar
+   - Buttons: Refresh, Open on Carrier Site, Edit, Delete
+   - Auto-refresh all non-delivered packages on app load
+
+5. MARKET LOOKUP
+   - Search any item to see live eBay results in-app (webview)
+   - Active / Sold toggle
+   - eBay dark mode CSS injection
+   - Neon purple glow border in dark mode
+
+6. MONITORS (admin-only)
+   - Monitor cards: name, status, site type, keywords, interval,
+     last ping, Discord role
+   - Supported site types:
+     * Shopify — whole-site or specific product via /products.json
+     * Funko (SFCC) — new releases via LD+JSON scraping, multi-page
+     * Nike SNKRS — API feed for upcoming/live drops
+     * Best Buy — product availability via priceBlocks API
+     * Amazon — BrowserWindow scraper
+     * LEGO — Apollo state / __NEXT_DATA__ parsing
+   - Discord webhook alerts for: new products, restocks, price drops
+   - Configurable poll intervals, keywords, proxy URL per monitor
+   - Price alert toggle with threshold
+   - Toggle (pause/resume), Test, Edit, Delete monitors
+   - LIVE PRODUCT FEED:
+     * Real-time product grid from all active monitors
+     * Feed tab switching between monitors
+     * In-stock filter + search bar
+     * Product cards: image, title, price, variant/size buttons
+     * Size-click ATC on Shopify (opens /cart/VARIANT:1)
+     * Copy product name, StockX/GOAT research links
+     * Launch badges: "Drops in Xd Xh", "Live Now", "Draw Open"
+   - NIKE-SPECIFIC:
+     * DNS-over-HTTPS via Cloudflare to bypass DNS blocks
+     * Custom nike-img:// protocol for CDN image proxying
+     * Boost mode: auto-polls every 10s near launch time
+     * Alerts: New Drop, Drop Live, Draw Open, method changes
+     * Alert sound (3x for live/draw, 1x for new)
+     * Window flash + auto-switch to monitors tab on live alert
+
+7. DISCORD (admin-only)
+   - Selfbot status indicator (Online/Offline) + Start/Stop toggle
+   - Discord Settings: token input, save/restart
+   - Keyword management: add/remove keyword chips
+   - Word-boundary matching for short keywords, substring for long
+   - Channel management: add/remove channel IDs
+   - Channel name resolution (shows "ServerName / #ChannelName")
+   - Alert History log: channel, keyword, message preview, timestamp
+   - Click alert to jump to message in Discord app
+   - ATC auto-open: keyword alerts with ATC links open automatically
+   - COOK GROUP FEED:
+     * Feed channel management (add/remove)
+     * Real-time message feed from designated channels
+     * Shows: author, channel, timestamp, content, embeds, images
+     * ATC link buttons highlighted
+     * Capped at 100 messages
+
+8. PROXIES (admin-only)
+   - Proxy table: Host:Port, Auth, Status, Latency, Last Tested
+   - Stats bar: Working, Dead, Untested, Total
+   - Import proxies (paste list, multiple formats supported)
+   - Duplicate detection on import
+   - Test individual / Test All (parallel)
+   - Delete individual / Clear Dead
+   - Real-time test result updates
+
+
+MODALS
+------
+- Add/Edit Sale — product, size, platform, prices, fees, date
+- Add/Edit Inventory — product, size, qty, store, prices, photo
+- Add/Edit Package — tracking number, nickname, carrier, delivery date
+- Delete Confirmation — shows item name, confirm/cancel
+- Mark as Sold — pre-filled from inventory, partial quantity
+- Settings — profile card, dark mode, cloud sync, sign out
+- Profile / Shipping Profiles — multiple profiles with name, email,
+  phone, address, credit card (with reveal toggles)
+- Add/Edit Release (admin) — name, date, image, price, time, link, notes
+- Add Pinned Message (admin) — text content
+- Add/Edit Monitor (admin) — site type, name, URL, keywords, webhook, etc.
+- Proxy Import — paste list textarea
+- Discord Settings — token, keywords, channels, feed channels
+- Features — feature list display
+- What's New — recent changes
+- Photo Lightbox — full-size image viewer
+- Checkout Webview — in-app browser for ATC with autofill
+
+
+CHECKOUT / AUTOFILL
+-------------------
+- In-app checkout webview (opens from ATC size buttons)
+- Auto-fills from active shipping profile: email, name, address,
+  phone, credit card
+- Supports native HTML selects and React combobox dropdowns (Shopify)
+- Country fills first (triggers state list), then state
+- MutationObserver re-fills on form re-renders
+- Dark mode CSS injection for checkout pages
+
+
+AUTHENTICATION
+--------------
+- Discord OAuth2 login gate
+- Server-side auth backend on Railway
+- JWT sessions signed with RS256
+- Device fingerprinting (bound to machine)
+- JWT verification on every app startup (local + server check)
+- Graceful fallback if server unreachable
+- Sign Out button in settings
+
+
+DATA & SYNC
+------------
+- Local storage: data.json (sales, inventory, packages)
+- Supabase cloud sync: fire-and-forget writes on every CRUD
+- Supabase polling: pulls changes every 15 seconds
+- Data migration tool: bulk upload local data to Supabase
+- Photo storage: local + Supabase Storage upload
+- Settings: settings.json (API keys, dark mode, profiles, etc.)
+- Releases & Pinned Messages: Railway PostgreSQL (shared for all users)
+
+
+KEYBOARD SHORTCUTS
+------------------
+- Escape — close any open modal
+- Ctrl+Enter — save any open modal
+- Enter — add keyword/channel in Discord settings
+
+
+UI / UX
+--------
+- Custom frameless window (no native title bar)
+- Custom minimize/close buttons
+- Dark mode with animated gradient background orbs
+- Light mode with clean grey borders and card shadows
+- Status bar: version number + live clock
+- Nav user group: avatar, username, tooltip
+- Toast notifications for monitor alerts (auto-dismiss 8-10s)
+- Nike persistent toast for live alerts (manual close)
+- Alert sound (alert.wav) for Discord + Nike alerts
+- Window taskbar flash on alerts
+- Inter font family
+
+
+AUTO-UPDATER
+------------
+- Checks for updates on app launch
+- Dialog when update downloaded: "Restart Now" or "Later"
+- Quits and installs on restart
+- Published via GitHub Releases (electron-builder)
+
+
+SECURITY
+--------
+- Context isolation enabled, node integration disabled
+- URL validation on openExternal (http/https only)
+- Row-Level Security on Supabase tables
+- JWT signature verification with embedded public key
+- Device ID binding prevents auth.json sharing
+- Server-side Discord role verification on login
+- Client secret never in app bundle
+
+
+ADMIN-ONLY (based on Discord user ID)
+--------------------------------------
+- Monitors tab
+- Discord tab
+- Proxies tab
+- Admin nav divider
+- Add Release / Add Pinned Message buttons
+- Edit/Delete on releases and pinned messages
+- Monitor CRUD (Railway server, JWT-authenticated)

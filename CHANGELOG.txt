@@ -1,6 +1,27 @@
 RESELL TRACKER — CHANGELOG
 ==========================
 
+v2.5.0 — 2026-03-13
+--------------------
+CHANGED
+  - Full UI redesign — dark mode updated with deeper navy background,
+    indigo accent glows, glass/blur effects, and animated background orbs.
+  - Light mode refreshed with clean grey borders, visible card shadows,
+    and cool grey background for better contrast.
+  - Inter font family across the entire app.
+  - Gradient buttons with glow effects in dark mode.
+  - Stat cards and panels now have hover-lift animations.
+  - View transitions with fadeInUp animation when switching tabs.
+
+v2.4.0 — 2026-03-13
+--------------------
+REMOVED
+  - Product Discovery tab removed — automated eBay price matching was
+    not accurate enough for reliable arbitrage recommendations.
+
+CHANGED
+  - eBay search results extraction updated to support new page layout.
+
 v2.3.1 — 2026-03-13
 --------------------
 REMOVED

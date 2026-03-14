@@ -2646,7 +2646,7 @@ Format responses with clear headers, bullet points, and bold text for key info. 
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1500,
         system: systemPrompt,
         messages: messages
@@ -2657,7 +2657,11 @@ Format responses with clear headers, bullet points, and bold text for key info. 
     if (!res.ok) {
       const err = await res.text()
       console.log('[advisor] API error:', res.status, err)
-      return { error: res.status === 401 ? 'Invalid API key — check your Claude key in Settings' : `API error: ${res.status}` }
+      if (res.status === 401) return { error: 'Invalid API key — check your Claude key in Settings' }
+      try {
+        const parsed = JSON.parse(err)
+        return { error: parsed.error?.message || `API error: ${res.status}` }
+      } catch { return { error: `API error: ${res.status} — ${err.substring(0, 200)}` } }
     }
 
     const data = await res.json()

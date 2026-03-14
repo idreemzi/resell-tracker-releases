@@ -152,7 +152,8 @@ async function createWindow() {
   })
 
   mainWindow.setMenuBarVisibility(false)
-  mainWindow.once('ready-to-show', () => mainWindow.show())
+  const startHidden = process.argv.includes('--hidden')
+  mainWindow.once('ready-to-show', () => { if (!startHidden) mainWindow.show() })
   mainWindowRef = mainWindow
 
   // System tray
@@ -192,6 +193,9 @@ async function createWindow() {
 protocol.registerSchemesAsPrivileged([
   { scheme: 'nike-img', privileges: { secure: true, bypassCSP: true, corsEnabled: true, supportFetchAPI: true } }
 ])
+
+// Auto-launch on Windows startup (starts hidden in tray)
+app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] })
 
 app.whenReady().then(() => {
   protocol.handle('nike-img', async (request) => {

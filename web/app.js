@@ -24,6 +24,7 @@ let adminViewUserId = null
 let approvalPoller  = null
 let _saving         = false  // prevent double-submit
 let releases        = []
+let pinnedMessages  = []
 let relCalMonth     = new Date().getMonth()
 let relCalYear      = new Date().getFullYear()
 let relSelectedDate = null
@@ -235,7 +236,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       if (event === 'TOKEN_REFRESHED' && session && currentUser) {
         // Session was refreshed — silently reload data
-        await Promise.all([loadAllData(), loadReleases()])
+        await Promise.all([loadAllData(), loadReleases(), loadPinned()])
       }
       if (event === 'SIGNED_OUT') {
         currentUser = currentProfile = null;
@@ -257,7 +258,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (Date.now() - lastDataLoad < 120000) return
       const { data: { session } } = await sb.auth.getSession()
       if (session) {
-        await Promise.all([loadAllData(), loadReleases()])
+        await Promise.all([loadAllData(), loadReleases(), loadPinned()])
         lastDataLoad = Date.now()
       } else {
         showScreen('screen-login')
@@ -356,7 +357,7 @@ async function bootApp() {
   if (currentProfile.is_admin) {
     document.getElementById('nav-admin').style.display = 'flex'
   }
-  await Promise.all([loadAllData(), loadReleases()])
+  await Promise.all([loadAllData(), loadReleases(), loadPinned()])
   showScreen('screen-app')
   switchView('home')
   startClock()
@@ -383,6 +384,76 @@ async function loadReleases() {
   try {
     const res = await fetch(`${RELEASES_SERVER}/releases`)
     if (res.ok) releases = await res.json()
+  } catch {}
+}
+
+// -- PINNED MESSAGES -----------------------------------------------------------
+async function loadPinned() {
+  try {
+    const res = await fetch(`${RELEASES_SERVER}/pinned`)
+    if (res.ok) pinnedMessages = await res.json()
+  } catch {}
+}
+
+function renderPinned() {
+  const list = document.getElementById('web-pinned-list')
+  const addBtn = document.getElementById('web-btn-add-pinned')
+  if (!list) return
+
+  if (addBtn && currentProfile?.is_admin) addBtn.style.display = ''
+
+  if (!pinnedMessages.length) {
+    list.innerHTML = '<p class="web-pinned-empty">No pinned messages yet.</p>'
+    return
+  }
+  list.innerHTML = pinnedMessages.map(msg => `
+    <div class="web-pinned-msg">
+      <p class="web-pinned-msg-text">${esc(msg.content).replace(/\n/g, '<br>')}</p>
+      ${currentProfile?.is_admin ? `<button class="web-pinned-delete" onclick="webDeletePinned('${msg.id}')" title="Delete">&times;</button>` : ''}
+    </div>
+  `).join('')
+}
+
+function webOpenPinnedModal() {
+  document.getElementById('web-pinned-input').value = ''
+  document.getElementById('web-modal-pinned').style.display = 'flex'
+}
+
+function webClosePinnedModal() {
+  document.getElementById('web-modal-pinned').style.display = 'none'
+}
+
+async function webSavePinned() {
+  const input = document.getElementById('web-pinned-input')
+  const content = input.value.trim()
+  if (!content) return
+  try {
+    const res = await fetch(`${RELEASES_SERVER}/pinned`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': currentProfile.discord_id },
+      body: JSON.stringify({ content })
+    })
+    if (res.ok) {
+      const msg = await res.json()
+      pinnedMessages.unshift(msg)
+      webClosePinnedModal()
+      renderPinned()
+      showToast('success', 'Posted', 'Pinned message added')
+    }
+  } catch {}
+}
+
+async function webDeletePinned(id) {
+  try {
+    const res = await fetch(`${RELEASES_SERVER}/pinned/${id}`, {
+      method: 'DELETE',
+      headers: { 'x-admin-key': currentProfile.discord_id }
+    })
+    if (res.ok) {
+      pinnedMessages = pinnedMessages.filter(m => m.id !== id)
+      renderPinned()
+      showToast('success', 'Deleted', 'Pinned message removed')
+    }
   } catch {}
 }
 
@@ -570,11 +641,13 @@ async function loadAllData() {
 
 function startRealtimeListeners() {
   setInterval(async () => {
-    await loadAllData()
+    await Promise.all([loadAllData(), loadReleases(), loadPinned()])
     renderInventory()
     renderSales()
     renderPackages()
     renderHome()
+    renderReleases()
+    renderPinned()
   }, 15000)
 }
 
@@ -600,7 +673,7 @@ function switchView(name) {
     n.classList.toggle('active', n.dataset.view === name)
   })
 
-  if      (name === 'drops')     renderReleases()
+  if      (name === 'drops')     { renderReleases(); renderPinned() }
   else if (name === 'home')      renderHome()
   else if (name === 'inventory') renderInventory()
   else if (name === 'sales')     renderSales()

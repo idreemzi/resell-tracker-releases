@@ -264,6 +264,31 @@
             <div class="drops-sync-time" id="drops-sync-time"></div>
           </div>
         </div>
+        <div class="web-pinned-section card" style="margin-bottom:20px">
+          <div class="web-pinned-header">
+            <span class="web-pinned-title">&#x1F4CC; Pinned Info</span>
+            <button class="btn-secondary" id="web-btn-add-pinned" style="display:none" onclick="webOpenPinnedModal()">+ Message</button>
+          </div>
+          <div id="web-pinned-list" class="web-pinned-list"></div>
+        </div>
+
+        <!-- Pinned message modal -->
+        <div id="web-modal-pinned" class="modal-overlay" style="display:none">
+          <div class="modal" style="max-width:480px">
+            <div class="modal-head">
+              <span>New Pinned Message</span>
+              <button class="modal-close" onclick="webClosePinnedModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+              <textarea id="web-pinned-input" class="input" rows="4" placeholder="Type your message..." style="width:100%;resize:vertical"></textarea>
+            </div>
+            <div class="modal-foot">
+              <button class="btn-secondary" onclick="webClosePinnedModal()">Cancel</button>
+              <button class="btn-primary" onclick="webSavePinned()">Post</button>
+            </div>
+          </div>
+        </div>
+
         <div class="web-releases-section">
           <div class="web-releases-layout">
             <div class="web-cal-wrap">

@@ -101,6 +101,7 @@ async function initDB() {
 // ── Allowlist (bypass guild/role check) ──────────────────────────────────────
 // Comma-separated Discord user IDs in env, e.g. ALLOWED_IDS=123,456
 const allowedIds = new Set((process.env.ALLOWED_IDS || '').split(',').map(s => s.trim()).filter(Boolean))
+const adminIds = new Set((process.env.ADMIN_DISCORD_ID || '').split(',').map(s => s.trim()).filter(Boolean))
 console.log(`[allowlist] Loaded ${allowedIds.size} IDs:`, [...allowedIds])
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -151,7 +152,7 @@ function requireAdmin(req, res, next) {
   const token = auth.slice(7)
   try {
     const payload = jwt.verify(token, PUBLIC_KEY, { algorithms: ['RS256'] })
-    if (payload.userId !== process.env.ADMIN_DISCORD_ID) {
+    if (!adminIds.has(payload.userId)) {
       return res.status(403).json({ error: 'Forbidden' })
     }
     req.adminUserId = payload.userId
@@ -251,11 +252,11 @@ function requireAdminAny(req, res, next) {
   if (auth?.startsWith('Bearer ')) {
     try {
       const payload = jwt.verify(auth.slice(7), PUBLIC_KEY, { algorithms: ['RS256'] })
-      if (payload.userId === process.env.ADMIN_DISCORD_ID) return next()
+      if (adminIds.has(payload.userId)) return next()
     } catch {}
   }
   // Accept x-admin-key header (web dashboard)
-  if (req.headers['x-admin-key'] === process.env.ADMIN_DISCORD_ID) return next()
+  if (adminIds.has(req.headers['x-admin-key'])) return next()
   return res.status(403).json({ error: 'Forbidden' })
 }
 
@@ -357,7 +358,7 @@ app.get('/pinned', async (req, res) => {
 })
 
 // POST /pinned — admin only
-app.post('/pinned', requireAdmin, async (req, res) => {
+app.post('/pinned', requireAdminAny, async (req, res) => {
   const { content } = req.body
   if (!content) return res.status(400).json({ error: 'content required' })
   const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -371,7 +372,7 @@ app.post('/pinned', requireAdmin, async (req, res) => {
 })
 
 // DELETE /pinned/:id — admin only
-app.delete('/pinned/:id', requireAdmin, async (req, res) => {
+app.delete('/pinned/:id', requireAdminAny, async (req, res) => {
   try {
     await pool.query('DELETE FROM pinned_messages WHERE id=$1', [req.params.id])
     res.json({ success: true })

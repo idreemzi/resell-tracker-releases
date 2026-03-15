@@ -488,6 +488,26 @@ html, body {
   width: 100%;
   border-collapse: collapse;
 }
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color .15s;
+}
+.data-table th.sortable:hover {
+  color: var(--accent2);
+}
+.sort-arrow {
+  display: inline-block;
+  font-size: 10px;
+  margin-left: 3px;
+  opacity: 0.3;
+  transition: opacity .15s;
+}
+.sort-arrow::after { content: '▲'; }
+th.sortable.sort-asc .sort-arrow { opacity: 1; color: var(--accent2); }
+th.sortable.sort-asc .sort-arrow::after { content: '▲'; }
+th.sortable.sort-desc .sort-arrow { opacity: 1; color: var(--accent2); }
+th.sortable.sort-desc .sort-arrow::after { content: '▼'; }
 .data-table th {
   padding: 13px 16px;
   text-align: left;
@@ -1745,6 +1765,23 @@ button svg, .btn-row svg, .btn-add svg, .tab-btn svg { pointer-events: none; }
   background: var(--glass3);
   color: var(--text);
   border-color: var(--border2);
+}
+.site-list-presale .site-list-url {
+  border-color: rgba(245,158,11,0.2);
+  background: rgba(245,158,11,0.05);
+}
+.site-list-presale-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--orange);
+  background: var(--orange-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 .release-detail-actions {
   display: flex;

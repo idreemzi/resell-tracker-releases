@@ -10,6 +10,7 @@ function collection(name) {
 }
 
 contextBridge.exposeInMainWorld('api', {
+  exportCSV:      (filename, csv) => ipcRenderer.invoke('export:csv', { filename, csv }),
   sales:          collection('sales'),
   inventory:      collection('inventory'),
   packages:       collection('packages'),

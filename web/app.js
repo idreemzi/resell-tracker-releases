@@ -233,6 +233,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (event === 'SIGNED_IN' && session) {
         await handleSession(session);
       }
+      if (event === 'TOKEN_REFRESHED' && session && currentUser) {
+        // Session was refreshed — silently reload data
+        await Promise.all([loadAllData(), loadReleases()])
+      }
       if (event === 'SIGNED_OUT') {
         currentUser = currentProfile = null;
         inventory = sales = packages = [];
@@ -242,6 +246,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       console.error('[auth]', err);
       showScreen('screen-login');
+    }
+  })
+
+  // Reload data when tab regains focus (handles long idle)
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && currentUser) {
+      const { data: { session } } = await sb.auth.getSession()
+      if (session) {
+        await Promise.all([loadAllData(), loadReleases()])
+      } else {
+        // Session fully expired — re-login
+        showScreen('screen-login')
+      }
     }
   })
 })

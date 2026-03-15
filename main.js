@@ -434,6 +434,18 @@ ipcMain.handle('releases:delete', async (_, id) => {
   }
 })
 
+// ── Export CSV ────────────────────────────────────────────────────────────────
+ipcMain.handle('export:csv', async (_, { filename, csv }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindowRef, {
+    title: 'Export CSV',
+    defaultPath: filename,
+    filters: [{ name: 'CSV Files', extensions: ['csv'] }]
+  })
+  if (canceled || !filePath) return { ok: false }
+  fs.writeFileSync(filePath, csv, 'utf8')
+  return { ok: true, path: filePath }
+})
+
 // ── Pinned messages — fetched from Railway server ─────────────────────────────
 ipcMain.handle('pinned:getAll', async () => {
   try {
@@ -1399,9 +1411,20 @@ function parseReleaseFromMessage(data) {
   const retailMatch = clean.match(/[-–]?\s*Retail[:\s]*\$?([\d,.]+)/i) || clean.match(/\$([\d,.]+)\s*retail/i)
   const retailPrice = retailMatch ? retailMatch[1].replace(/,/g, '') : ''
 
-  // Resale / Presale price: "-Resale: $15+", "Resale: $200-250", "Presale: $300", "Resell Prediction: $220"
-  const resaleMatch = clean.match(/[-–]?\s*(?:Resale|Resell|Presale|Resell\s*Prediction)[:\s]*\$?([\d,.]+[\s\-–+/]*[\d,.]*)/i)
-  const resalePrice = resaleMatch ? resaleMatch[1].replace(/,/g, '').trim() : ''
+  // Resale / Presale price — catch all common cook group formats
+  const resalePatterns = [
+    // "-Current Presales $130+", "-Resale: $200-250", "-Resell: $15+"
+    /[-–]?\s*(?:Current\s+|Estimated\s+|Expected\s+)?(?:Re-?sale|Re-?sell|Pre-?sales?|Resell\s*(?:Prediction|Value|Estimate|Price)|Resale\s*(?:Value|Estimate|Price)|Aftermarket|Market\s*(?:Value|Price)|Flip\s*(?:Price|Value))[s:\s]*\$?([\d,.]+[\s\-–+/]*[\d,.]*)/i,
+    // "Selling for $X", "Going for $X", "Reselling for $X"
+    /(?:Re-?selling|Pre-?selling|Selling|Going)\s+for\s+\$?([\d,.]+[\s\-–+/]*[\d,.]*)/i,
+    // "$130+ resale", "$200 resell", "$X aftermarket"
+    /\$([\d,.]+[\s\-–+/]*[\d,.]*)\s*(?:re-?sale|re-?sell|pre-?sale|aftermarket)/i,
+  ]
+  let resalePrice = ''
+  for (const re of resalePatterns) {
+    const m = clean.match(re)
+    if (m) { resalePrice = m[1].replace(/,/g, '').trim(); break }
+  }
 
   // Date: first try Discord timestamp <t:UNIX:f> — most accurate
   let releaseDate = ''
@@ -1458,25 +1481,51 @@ function parseReleaseFromMessage(data) {
   const notesMatch = clean.match(/things?\s+to\s+note[:\s]*([\s\S]*?)(?:\n\n|@everyone|@here|$)/i)
   const notes = notesMatch ? notesMatch[1].replace(/@everyone|@here/g, '').replace(/<t:\d+:[tTdDfFR]>/g, '').trim().slice(0, 300) : ''
 
-  // Links: collect all URLs — markdown [label](url) and bare URLs
+  // Links: collect URLs, separating buy links from presale links
+  // Split text into sections based on "Links:" and "Presales:" headers
   const allLinks = []
+  const presaleLinks = []
   const seen = new Set()
-  // Markdown links first: [Store Name](url)
+
+  // Find where "Presales:" section starts (links after this are presales)
+  const presaleHeaderIdx = text.search(/\bPresales?\s*:/i)
+
+  // Collect all markdown links [label](url)
   let mdMatch
   const mdRe = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g
   while ((mdMatch = mdRe.exec(text)) !== null) {
     const url = mdMatch[2].replace(/[)>.,]+$/, '')
-    if (!seen.has(url)) { seen.add(url); allLinks.push(url) }
+    if (seen.has(url)) continue
+    seen.add(url)
+    if (presaleHeaderIdx >= 0 && mdMatch.index > presaleHeaderIdx) {
+      presaleLinks.push(url)
+    } else {
+      allLinks.push(url)
+    }
   }
-  // Bare URLs (skip ones already found in markdown)
+
+  // Bare URLs (skip markdown ones)
   const bareRe = /https?:\/\/\S+/g
   let bareMatch
-  const textNoMd = text.replace(/\[[^\]]*\]\([^)]*\)/g, '')
+  const textNoMd = text.replace(/\[[^\]]*\]\([^)]*\)/g, '___MD___')
   while ((bareMatch = bareRe.exec(textNoMd)) !== null) {
     const url = bareMatch[0].replace(/[)>.,]+$/, '')
-    if (!seen.has(url)) { seen.add(url); allLinks.push(url) }
+    if (seen.has(url)) continue
+    seen.add(url)
+    // Check position in original text roughly
+    if (presaleHeaderIdx >= 0 && bareMatch.index > presaleHeaderIdx) {
+      presaleLinks.push(url)
+    } else {
+      allLinks.push(url)
+    }
   }
-  const link = allLinks.join('\n')
+
+  // Join buy links, mark presale links with [PRESALE] prefix
+  const linkParts = [
+    ...allLinks,
+    ...presaleLinks.map(u => `[PRESALE] ${u}`)
+  ]
+  const link = linkParts.join('\n')
 
   const result = { name, date: releaseDate, retailPrice, resalePrice, imageUrl, link, notes }
   if (releaseTime) result.releaseTime = releaseTime
@@ -1579,17 +1628,29 @@ ipcMain.handle('selfbot:getChannelNames', async () => {
     const token = getSelfbotConfig().token
     if (!token) return {}
     const cfg = getSelfbotConfig()
-    const ids = [...new Set([...(cfg.channelIds || []), ...(cfg.feedChannelIds || [])])]
+    const ids = [...new Set([...(cfg.channelIds || []), ...(cfg.feedChannelIds || []), ...(cfg.autoReleaseChannelIds || [])])]
     const result = {}
 
-    await Promise.all(ids.map(async id => {
-      if (_channelNameCache.has(id)) { result[id] = _channelNameCache.get(id); return }
+    for (const id of ids) {
+      if (_channelNameCache.has(id)) { result[id] = _channelNameCache.get(id); continue }
       try {
         const res = await fetch(`https://discord.com/api/v10/channels/${id}`, {
           headers: { Authorization: token, 'Content-Type': 'application/json' }
         })
-        if (!res.ok) { result[id] = { channel: id, guild: null }; return }
-        const data = await res.json()
+        if (res.status === 429) {
+          const retry = (await res.json()).retry_after || 1
+          await new Promise(r => setTimeout(r, retry * 1000 + 100))
+          // Retry once
+          const res2 = await fetch(`https://discord.com/api/v10/channels/${id}`, {
+            headers: { Authorization: token, 'Content-Type': 'application/json' }
+          })
+          if (!res2.ok) { result[id] = { channel: id, guild: null }; continue }
+          var data = await res2.json()
+        } else if (!res.ok) {
+          result[id] = { channel: id, guild: null }; continue
+        } else {
+          var data = await res.json()
+        }
         const channelName = data.name || data.recipients?.[0]?.username || id
         let guildName = null
         if (data.guild_id) {
@@ -1612,7 +1673,7 @@ ipcMain.handle('selfbot:getChannelNames', async () => {
         _channelNameCache.set(id, entry)
         result[id] = entry
       } catch { result[id] = { channel: id, guild: null } }
-    }))
+    }
     return result
   } catch { return {} }
 })

@@ -20,6 +20,12 @@ let chartYear = new Date().getFullYear()
 const chartVisible = { spent: true, revenue: true, profit: true }
 let editMode  = null   // { collection, id } or null
 
+// Sort state for tables
+const sortState = {
+  inventory: { key: null, asc: true },
+  sales:     { key: null, asc: true },
+}
+
 const PIPELINE_STAGES = ['Ordered', 'Awaiting Pickup', 'In Transit', 'Out for Delivery', 'Delivered']
 const expandedPackages = new Set()  // pkg IDs with event history expanded
 let deleteTarget  = null
@@ -71,6 +77,27 @@ function fmt(n, fallback = '—') {
   const v = parseFloat(n)
   if (n == null || n === '' || isNaN(v)) return fallback
   return '$' + v.toFixed(2)
+}
+
+async function exportCSV(table) {
+  let rows = [], headers = []
+  if (table === 'inventory') {
+    headers = ['Product','Size','Qty','Store','Buy Price','Est. Resell','Notes','Date Added']
+    rows = inventory.map(i => [
+      i.productName, i.size || '', i.qty || 1, i.store || '',
+      i.buyPrice || 0, i.estimatedResell || '', i.notes || '', i.createdAt || ''
+    ])
+  } else if (table === 'sales') {
+    headers = ['Product','Size','Platform','Qty','Buy Price','Sell Price','Fees','Profit','Date']
+    rows = sales.map(s => [
+      s.productName, s.size || '', s.platform || '', s.qty || 1,
+      s.buyPrice || 0, s.sellPrice || 0, s.fees || 0,
+      (calcSaleProfit(s) || 0).toFixed(2), s.createdAt || ''
+    ])
+  }
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const filename = `${table}_${new Date().toISOString().slice(0, 10)}.csv`
+  await window.api.exportCSV(filename, csv)
 }
 
 function calcSaleProfit(s) {
@@ -244,9 +271,11 @@ function renderAll() {
 // ── Sales ─────────────────────────────────────────────────────────────────────
 function renderSales(filter = '') {
   const q    = filter.toLowerCase()
-  const rows = q
+  let rows = q
     ? sales.filter(s => [s.productName, s.platform, s.size].join(' ').toLowerCase().includes(q))
-    : sales
+    : [...sales]
+  rows = sortRows(rows, 'sales')
+  updateSortHeaders('sales-table', 'sales')
 
   $('sales-count').textContent = `${sales.length} Total`
 
@@ -286,11 +315,46 @@ function renderSales(filter = '') {
 }
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
+function sortRows(rows, table) {
+  const { key, asc } = sortState[table]
+  if (!key) return rows
+  return [...rows].sort((a, b) => {
+    let va, vb
+    if (key === 'estProfit') {
+      va = ((parseFloat(a.estimatedResell) || 0) - (parseFloat(a.buyPrice) || 0))
+      vb = ((parseFloat(b.estimatedResell) || 0) - (parseFloat(b.buyPrice) || 0))
+    } else if (key === 'profit') {
+      va = (parseFloat(a.sellPrice) || 0) * (a.qty || 1) - (parseFloat(a.buyPrice) || 0) * (a.qty || 1) - (parseFloat(a.fees) || 0)
+      vb = (parseFloat(b.sellPrice) || 0) * (b.qty || 1) - (parseFloat(b.buyPrice) || 0) * (b.qty || 1) - (parseFloat(b.fees) || 0)
+    } else {
+      va = a[key]; vb = b[key]
+    }
+    if (va == null) va = ''
+    if (vb == null) vb = ''
+    const na = parseFloat(va), nb = parseFloat(vb)
+    if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na
+    return asc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+  })
+}
+
+function updateSortHeaders(tableId, table) {
+  const thead = $(tableId)?.querySelector('thead')
+  if (!thead) return
+  thead.querySelectorAll('th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc')
+    if (th.dataset.sort === sortState[table].key) {
+      th.classList.add(sortState[table].asc ? 'sort-asc' : 'sort-desc')
+    }
+  })
+}
+
 function renderInventory(filter = '') {
   const q    = filter.toLowerCase()
-  const rows = q
+  let rows = q
     ? inventory.filter(i => [i.productName, i.store, i.size].join(' ').toLowerCase().includes(q))
-    : inventory
+    : [...inventory]
+  rows = sortRows(rows, 'inventory')
+  updateSortHeaders('inv-table', 'inventory')
 
   $('inv-count').textContent = `${inventory.length} Total`
 
@@ -1021,6 +1085,24 @@ function bindEvents() {
   // Profit preview
   ;['s-buy','s-sell','s-fees'].forEach(id => $(id).addEventListener('input', updateSaleProfitPreview))
 
+  // Sortable table headers
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const table = th.closest('table')
+      const tableName = table.id === 'inv-table' ? 'inventory' : table.id === 'sales-table' ? 'sales' : null
+      if (!tableName) return
+      const key = th.dataset.sort
+      if (sortState[tableName].key === key) {
+        sortState[tableName].asc = !sortState[tableName].asc
+      } else {
+        sortState[tableName].key = key
+        sortState[tableName].asc = true
+      }
+      if (tableName === 'inventory') renderInventory($('inv-search').value)
+      else renderSales($('sales-search').value)
+    })
+  })
+
   // Search
   $('sales-search').addEventListener('input', e => renderSales(e.target.value))
   $('inv-search').addEventListener('input',   e => renderInventory(e.target.value))
@@ -1446,12 +1528,12 @@ if (LOCAL_SITES.has(created.site_type) && created.active) window.api.localMonito
     const linkBtn    = e.target.closest('.btn-release-link')
     if (linkBtn?.dataset.url) window.api.openExternal(linkBtn.dataset.url)
     if (editBtn) {
-      const card = editBtn.closest('.home-release-card')
+      const card = editBtn.closest('.home-release-card') || editBtn.closest('.release-compact-item')
       const r = releases.find(x => x.id === card?.dataset.id)
       if (r) openReleaseModal(r)
     }
     if (delBtn) {
-      const card = delBtn.closest('.home-release-card')
+      const card = delBtn.closest('.home-release-card') || delBtn.closest('.release-compact-item')
       if (card?.dataset.id) deleteRelease(card.dataset.id)
     }
     if (pinDelBtn) {
@@ -1789,12 +1871,15 @@ function renderReleasesForDate(dateStr) {
 
     const localTimeDisplay = utcTimeToLocalDisplay(r.date, r.releaseTime)
 
-    const linksHtml = r.link ? r.link.split('\n').filter(u => u.trim()).map(u => {
+    const linksHtml = r.link ? r.link.split('\n').filter(u => u.trim()).map(raw => {
+      const isPresale = raw.startsWith('[PRESALE] ')
+      const u = isPresale ? raw.replace('[PRESALE] ', '') : raw
       let hostname
       try { hostname = new URL(u.trim()).hostname.replace('www.', '') } catch { hostname = 'Link' }
-      const label = hostname.split('.')[0].charAt(0).toUpperCase() + hostname.split('.')[0].slice(1)
-      return `<div class="site-list-item">
-        <div class="site-list-label">${esc(label)}</div>
+      const siteName = hostname.split('.')[0].charAt(0).toUpperCase() + hostname.split('.')[0].slice(1)
+      const label = isPresale ? `${siteName} <span class="site-list-presale-badge">Presale</span>` : siteName
+      return `<div class="site-list-item${isPresale ? ' site-list-presale' : ''}">
+        <div class="site-list-label">${label}</div>
         <div class="site-list-url-row">
           <div class="site-list-url">${esc(u.trim())}</div>
           <button class="site-list-copy" data-url="${esc(u.trim())}" title="Copy URL">

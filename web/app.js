@@ -250,13 +250,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   // Reload data when tab regains focus (handles long idle)
+  let lastDataLoad = Date.now()
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible' && currentUser) {
+      // Only reload if it's been idle for at least 2 minutes
+      if (Date.now() - lastDataLoad < 120000) return
       const { data: { session } } = await sb.auth.getSession()
       if (session) {
         await Promise.all([loadAllData(), loadReleases()])
+        lastDataLoad = Date.now()
       } else {
-        // Session fully expired — re-login
         showScreen('screen-login')
       }
     }
@@ -386,6 +389,13 @@ async function loadReleases() {
 function renderReleases() {
   const countEl = document.getElementById('web-releases-count')
   if (countEl) countEl.textContent = releases.length
+
+  // Update drops sync time
+  const syncTimeEl = document.getElementById('drops-sync-time')
+  if (syncTimeEl) {
+    const now = new Date()
+    syncTimeEl.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + ' · ' + now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
 
   // --- Calendar ---
   const grid = document.getElementById('web-cal-grid')
@@ -1437,6 +1447,7 @@ function changeYear(delta) {
 // -- ADMIN ---------------------------------------------------------------------
 async function renderAdmin() {
   if (!currentProfile?.is_admin) { showToast('error', 'Access denied', 'Admin only'); return }
+  loadAllowlist()
   const tbody = document.getElementById('admin-users-tbody')
   tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px"><div class="spinner"></div></td></tr>`
 
@@ -1501,6 +1512,61 @@ async function resetAdminView() {
   document.getElementById('btn-back-admin').style.display = 'none'
   await loadAllData()
   switchView('admin')
+}
+
+// -- ALLOWLIST -----------------------------------------------------------------
+async function loadAllowlist() {
+  if (!currentProfile?.is_admin) return
+  try {
+    const res = await fetch(`${RELEASES_SERVER}/allowlist`, {
+      headers: { 'x-admin-key': currentProfile.discord_id }
+    })
+    if (!res.ok) return
+    const ids = await res.json()
+    const container = document.getElementById('allowlist-items')
+    if (!container) return
+    if (ids.length === 0) {
+      container.innerHTML = '<span class="cell-dim" style="font-size:12px">No allowlisted users yet</span>'
+      return
+    }
+    container.innerHTML = ids.map(id => `
+      <div style="display:inline-flex;align-items:center;gap:6px;background:var(--glass2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:var(--text)">
+        ${esc(id)}
+        <button onclick="removeFromAllowlist('${esc(id)}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0;line-height:1">&times;</button>
+      </div>
+    `).join('')
+  } catch {}
+}
+
+async function addToAllowlist() {
+  const input = document.getElementById('allowlist-input')
+  const discordId = input.value.trim()
+  if (!discordId) return
+  try {
+    const res = await fetch(`${RELEASES_SERVER}/allowlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': currentProfile.discord_id },
+      body: JSON.stringify({ discordId })
+    })
+    if (res.ok) {
+      input.value = ''
+      showToast('success', 'Added', `${discordId} allowlisted`)
+      loadAllowlist()
+    }
+  } catch {}
+}
+
+async function removeFromAllowlist(discordId) {
+  try {
+    const res = await fetch(`${RELEASES_SERVER}/allowlist/${discordId}`, {
+      method: 'DELETE',
+      headers: { 'x-admin-key': currentProfile.discord_id }
+    })
+    if (res.ok) {
+      showToast('success', 'Removed', `${discordId} removed from allowlist`)
+      loadAllowlist()
+    }
+  } catch {}
 }
 
 // -- PROFILE / SETTINGS --------------------------------------------------------

@@ -41,16 +41,17 @@ const pool = new Pool({
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS releases (
-      id          TEXT PRIMARY KEY,
-      name        TEXT NOT NULL,
-      date        TEXT NOT NULL,
+      id           TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      date         TEXT NOT NULL,
       image_url    TEXT,
       retail_price TEXT,
+      resale_price TEXT,
       release_time TEXT,
       link         TEXT,
       notes        TEXT,
-      created_at  TIMESTAMPTZ DEFAULT NOW(),
-      updated_at  TIMESTAMPTZ DEFAULT NOW()
+      created_at   TIMESTAMPTZ DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ DEFAULT NOW()
     )
   `)
   // Add columns to existing tables that predate them
@@ -96,6 +97,11 @@ async function initDB() {
   startMonitorEngine()
   console.log('Database ready')
 }
+
+// ── Allowlist (bypass guild/role check) ──────────────────────────────────────
+// Comma-separated Discord user IDs in env, e.g. ALLOWED_IDS=123,456
+const allowedIds = new Set((process.env.ALLOWED_IDS || '').split(',').map(s => s.trim()).filter(Boolean))
+console.log(`[allowlist] Loaded ${allowedIds.size} IDs:`, [...allowedIds])
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 const tokenStore = new Map()
@@ -183,9 +189,6 @@ app.post('/auth/exchange', async (req, res) => {
     return res.status(500).json({ error: 'Token exchange error' })
   }
 
-  const hasRole = await checkDiscordRole(tokenData.access_token)
-  if (!hasRole) return res.status(403).json({ error: 'no_subscription' })
-
   let user
   try {
     const userRes = await fetch('https://discord.com/api/users/@me', {
@@ -195,6 +198,13 @@ app.post('/auth/exchange', async (req, res) => {
     user = await userRes.json()
   } catch {
     return res.status(500).json({ error: 'Failed to get user info' })
+  }
+
+  // Skip role check for allowlisted users
+  console.log(`[auth] User ${user.id} (${user.username}) — allowlisted: ${allowedIds.has(user.id)}`)
+  if (!allowedIds.has(user.id)) {
+    const hasRole = await checkDiscordRole(tokenData.access_token)
+    if (!hasRole) return res.status(403).json({ error: 'no_subscription' })
   }
 
   tokenStore.set(user.id, { refreshToken: tokenData.refresh_token })
@@ -226,10 +236,43 @@ app.post('/auth/verify', async (req, res) => {
     return res.json({ valid: false, reason: 'reauth' })
   }
 
-  const hasRole = await checkDiscordRole(accessToken)
-  if (!hasRole) return res.json({ valid: false, reason: 'no_subscription' })
+  if (!allowedIds.has(userId)) {
+    const hasRole = await checkDiscordRole(accessToken)
+    if (!hasRole) return res.json({ valid: false, reason: 'no_subscription' })
+  }
 
   res.json({ valid: true })
+})
+
+// ── Allowlist routes (admin only via key or JWT) ─────────────────────────────
+function requireAdminAny(req, res, next) {
+  // Accept server JWT (Electron app)
+  const auth = req.headers.authorization
+  if (auth?.startsWith('Bearer ')) {
+    try {
+      const payload = jwt.verify(auth.slice(7), PUBLIC_KEY, { algorithms: ['RS256'] })
+      if (payload.userId === process.env.ADMIN_DISCORD_ID) return next()
+    } catch {}
+  }
+  // Accept x-admin-key header (web dashboard)
+  if (req.headers['x-admin-key'] === process.env.ADMIN_DISCORD_ID) return next()
+  return res.status(403).json({ error: 'Forbidden' })
+}
+
+app.get('/allowlist', requireAdminAny, (req, res) => {
+  res.json([...allowedIds])
+})
+
+app.post('/allowlist', requireAdminAny, (req, res) => {
+  const { discordId } = req.body
+  if (!discordId) return res.status(400).json({ error: 'discordId required' })
+  allowedIds.add(String(discordId).trim())
+  res.json({ allowlist: [...allowedIds] })
+})
+
+app.delete('/allowlist/:discordId', requireAdminAny, (req, res) => {
+  allowedIds.delete(req.params.discordId)
+  res.json({ allowlist: [...allowedIds] })
 })
 
 // ── Releases routes ───────────────────────────────────────────────────────────
@@ -270,7 +313,7 @@ app.post('/releases', requireAdmin, async (req, res) => {
     res.json({ id: releaseId, name, date, imageUrl: imageUrl || null, retailPrice: retailPrice || null, resalePrice: resalePrice || null, releaseTime: releaseTime || null, link: link || null, notes: notes || null })
   } catch (err) {
     console.error('POST /releases error:', err)
-    res.status(500).json({ error: 'Database error' })
+    res.status(500).json({ error: 'Database error', detail: err.message })
   }
 })
 

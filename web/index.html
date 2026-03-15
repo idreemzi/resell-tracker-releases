@@ -259,6 +259,10 @@
       <div id="view-drops" class="view" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Drops <span class="page-count" id="web-releases-count">0</span></h1>
+          <div class="drops-sync-info">
+            <div class="hero-sync-dot">Live sync</div>
+            <div class="drops-sync-time" id="drops-sync-time"></div>
+          </div>
         </div>
         <div class="web-releases-section">
           <div class="web-releases-layout">
@@ -544,6 +548,14 @@
         </div>
         <div id="admin-viewing-banner" class="admin-banner" style="display:none">
           Viewing: <strong id="admin-viewing-name"></strong>
+        </div>
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-head">Allowlist <span class="cell-dim" style="font-weight:400;font-size:11px;margin-left:8px">Users who can access without being in your Discord server</span></div>
+          <div style="padding:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="allowlist-input" type="text" placeholder="Discord User ID" class="input" style="width:220px" />
+            <button class="btn-secondary" onclick="addToAllowlist()">Add</button>
+          </div>
+          <div id="allowlist-items" style="padding:0 16px 16px;display:flex;flex-wrap:wrap;gap:8px"></div>
         </div>
         <div class="card">
           <div class="card-head">User Management</div>

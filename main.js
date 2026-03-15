@@ -1755,7 +1755,9 @@ ipcMain.handle('selfbot:testAutoRelease', async (_, channelId) => {
       notifyRenderer('releases:refresh', release)
       return { ok: true, parsed, raw: msg.content.slice(0, 300), created: true }
     } else {
-      return { ok: true, parsed, raw: msg.content.slice(0, 300), warning: `Parsed OK but server returned ${createRes.status}` }
+      let serverErr = ''
+      try { const b = await createRes.json(); serverErr = b.detail || b.error || '' } catch {}
+      return { ok: true, parsed, raw: msg.content.slice(0, 300), warning: `Parsed OK but server returned ${createRes.status}${serverErr ? ': ' + serverErr : ''}` }
     }
   } catch (err) {
     return { error: err.message }

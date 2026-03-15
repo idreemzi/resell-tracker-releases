@@ -1094,6 +1094,18 @@ body::after {
 
 .page-actions { display: flex; align-items: center; gap: 8px; }
 
+.drops-sync-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.drops-sync-time {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
+
 @keyframes hero-in {
   from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -2545,9 +2557,9 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 
 .web-releases-layout {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 0;
-  min-height: 500px;
+  min-height: calc(100vh - 160px);
 }
 
 /* Calendar card */
@@ -2628,24 +2640,24 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 }
 
 .web-cal-day-release {
-  background: #3b82f6;
+  background: var(--accent);
   color: #fff;
   font-weight: 700;
   cursor: pointer;
 }
 .web-cal-day-release:hover {
-  background: #2563eb;
+  background: var(--accent-hover, #4f46e5);
 }
 
 .web-cal-day-today.web-cal-day-release {
-  background: linear-gradient(135deg, #f97316, #3b82f6);
+  background: linear-gradient(135deg, #f97316, var(--accent));
   color: #fff;
 }
 
 .web-cal-day-selected {
   outline: 2px solid #fff;
   outline-offset: -2px;
-  box-shadow: 0 0 10px rgba(59,130,246,0.4);
+  box-shadow: 0 0 10px rgba(99,102,241,0.4);
 }
 
 /* Right panel */
@@ -2665,54 +2677,101 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 .web-releases-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
 
 /* Release cards */
 .web-release-compact-item {
-  background: var(--glass2);
+  background: var(--glass);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  transition: border-color .15s;
+  box-shadow: var(--shadow);
+  position: relative;
+  transition: border-color 0.2s, transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s;
 }
 .web-release-compact-item:hover {
-  border-color: var(--border2);
+  border-color: var(--border3);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
 }
+
+/* Gradient top stripe on release cards */
+.web-release-compact-item::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 20%; right: 20%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.6;
+  transition: opacity 0.2s, left 0.2s, right 0.2s;
+  z-index: 2;
+}
+.web-release-compact-item:hover::before { left: 5%; right: 5%; opacity: 1; }
+
+/* Subtle glow behind release card on hover */
+.web-release-compact-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background: radial-gradient(ellipse 60% 60% at 30% 0%, var(--accent-soft), transparent);
+  pointer-events: none;
+}
+.web-release-compact-item:hover::after { opacity: 1; }
+
+/* Staggered entrance animation for release cards */
+.web-releases-list .web-release-compact-item:nth-child(1) { animation: card-rise 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.05s both; }
+.web-releases-list .web-release-compact-item:nth-child(2) { animation: card-rise 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.11s both; }
+.web-releases-list .web-release-compact-item:nth-child(3) { animation: card-rise 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.17s both; }
+.web-releases-list .web-release-compact-item:nth-child(4) { animation: card-rise 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.23s both; }
+.web-releases-list .web-release-compact-item:nth-child(5) { animation: card-rise 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.29s both; }
+.web-releases-list .web-release-compact-item:nth-child(n+6) { animation: card-rise 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.35s both; }
 
 .web-release-compact-header {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
+  gap: 16px;
+  padding: 16px 20px;
   cursor: pointer;
   user-select: none;
+  position: relative;
+  z-index: 1;
 }
 
 .web-release-compact-img {
   width: 72px;
   height: 72px;
-  border-radius: 10px;
+  border-radius: 11px;
   object-fit: cover;
-  background: var(--glass);
+  background: var(--glass2);
   flex-shrink: 0;
   border: 1px solid var(--border);
+  transition: border-color 0.2s;
+}
+.web-release-compact-item:hover .web-release-compact-img {
+  border-color: var(--border2);
 }
 
 .web-release-compact-name {
   flex: 1;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: -0.3px;
 }
 
 .web-rel-chevron {
   color: var(--text-muted);
   flex-shrink: 0;
   transition: transform .2s;
+  position: relative;
+  z-index: 1;
 }
 .web-rel-open .web-rel-chevron {
   transform: rotate(180deg);
@@ -2731,8 +2790,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 .web-rel-info-grid {
   display: flex;
   gap: 24px;
-  padding: 0 16px 12px;
+  padding: 4px 20px 14px;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
 }
 
 .web-rel-info-item {
@@ -2756,13 +2817,15 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 }
 
 .web-rel-notes {
-  padding: 4px 16px 12px;
+  padding: 4px 20px 14px;
   font-size: 13px;
   color: var(--text-muted);
   line-height: 1.6;
   word-wrap: break-word;
   overflow-wrap: break-word;
   white-space: normal;
+  position: relative;
+  z-index: 1;
 }
 
 /* Site List button */
@@ -2790,8 +2853,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
   max-height: 0;
   overflow: hidden;
   transition: max-height .25s ease;
-  padding: 0 16px;
+  padding: 0 20px;
   display: none;
+  position: relative;
+  z-index: 1;
 }
 .web-rel-sites-panel.web-rel-sites-visible {
   display: flex;
@@ -2804,7 +2869,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 
 /* Hide details when site list is open */
 .web-release-compact-item.web-show-sites .web-release-compact-details { display: none !important; max-height: 0 !important; }
-.web-release-compact-item.web-show-sites .web-rel-sites-panel { display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto; padding: 0 16px 12px; }
+.web-release-compact-item.web-show-sites .web-rel-sites-panel { display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto; padding: 0 20px 14px; }
 
 .web-release-link-row {
   display: flex;
